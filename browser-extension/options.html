@@ -1,0 +1,9 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><title>职位采集设置</title>
+<style>body{font:16px/1.7 system-ui,sans-serif;max-width:560px;margin:50px auto;padding:24px;color:#193a40}h1{font-size:24px}label{display:block;margin:18px 0}input[type=number]{font:inherit;width:150px;padding:8px}button{font:inherit;border:0;border-radius:6px;padding:10px 22px;background:#008c95;color:white;cursor:pointer}#status{white-space:pre-wrap;color:#17695e}</style></head>
+<body><h1>职位采集设置</h1><form id="settings">
+<label>目标岗位数量：<input id="count" type="number" min="1" max="1048575" step="1" required value="30"></label>
+<label><input id="collapsed" type="checkbox" checked> 默认收起采集窗口，只显示小进度条</label>
+<button type="submit">保存设置</button></form><p id="status" role="status"></p>
+<p>保存后，回到 BOSS 搜索页点工具栏 B 图标即可采集。设置会记住，下次继续使用。</p>
+<p>采集中也可展开左下角的小进度条修改数量；点击 × 可完全隐藏，采集仍会继续。再点 B 图标可恢复窗口。</p>
+<script src="options.js"></script></body></html>

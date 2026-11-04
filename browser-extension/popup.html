@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><title>BOSS 职位导出 Excel</title>
+<style>
+body{font:14px/1.6 system-ui,sans-serif;width:300px;padding:18px;color:#193a40;margin:0}
+h1{font-size:18px;margin:0 0 8px}p{margin:8px 0}label{display:block;margin:10px 0}input{width:70px;padding:4px}
+button{padding:9px 12px;border:0;border-radius:6px;cursor:pointer;margin:4px 3px 4px 0;background:#edf5f5;color:#193a40}
+#start{background:#008c95;color:white}#status{white-space:pre-wrap;overflow-wrap:anywhere;min-height:42px}
+.note{color:#627477;font-size:12px}#clear{color:#a33}
+</style></head>
+<body>
+<h1>BOSS 职位导出 Excel</h1>
+<p>在已登录的职位搜索页点击开始，自动逐条打开并读取详情。</p>
+<label>目标数量：<input id="count" type="number" value="30" min="1" max="1048575"></label>
+<button id="start">开始 / 继续</button><button id="stop">暂停</button>
+<button id="export">导出已有结果</button><button id="clear">清空记录</button>
+<p id="status" role="status">正在读取状态…</p>
+<p class="note">请保持此 BOSS 标签页在前台。结果保存在本机；登录或验证需你手动完成。</p>
+<script src="popup.js"></script>
+</body></html>
