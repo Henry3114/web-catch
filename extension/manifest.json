@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "网页采集工作台 · 独立试用版",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "minimum_chrome_version": "116",
   "description": "通过鼠标点选配置列表、字段、同页详情及翻页，保存模板并导出Excel。独立于BOSS专用扩展。",
   "permissions": ["activeTab", "scripting", "storage", "sidePanel"],

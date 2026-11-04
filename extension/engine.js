@@ -122,7 +122,8 @@
         for(let el=last?.parentElement;el && el!==document.body;el=el.parentElement) if(el.scrollHeight>el.clientHeight && /scroll|auto/.test(getComputedStyle(el).overflowY)) el.scrollTop=el.scrollHeight;
         window.scrollTo(0,document.body.scrollHeight);
       } else {
-        const button=get(c.pagination.selector);
+        const chosen=get(c.pagination.selector);
+        const button=chosen?.closest('button,a,[role="button"]') || chosen;
         if (!button || !visible(button) || button.disabled || button.getAttribute('aria-disabled')==='true' || /disabled/.test(button.className)) return false;
         state.pending = {at:Date.now(),origin:new URL(url()).origin,nextPage:state.page+1};
         await emit('正在翻页…');
@@ -150,7 +151,7 @@
             check();
             const data=listValues(row,c), id=key(row,data,c);
             if(!id || seen.has(id)) continue;
-            if(!Object.values(data).some(Boolean)) throw new Error('列表字段全部为空，请先检查预览。');
+            if(!Object.values(data).some(Boolean)) throw new Error('这个匹配项的字段全部为空：可能选中了外层容器，或字段固定在第一条。请预览并使用“修复列表层级与字段”。');
             const details=await readDetails(row,data,c);check();
             state.records.push({...data,...details,_key:id,_source:url(),_time:new Date(Date.now()+8*3600000).toISOString().replace('Z','+08:00')});
             seen.add(id);
@@ -188,9 +189,35 @@
     }
     function preview(input) {
       const c=validate(input), rows=items(c), warnings=[];
+      if(rows.slice(0,5).some(row=>VisualLocator.nestedRecords(row)>1))warnings.push('列表可能选中了外层容器：一个匹配项包含多条记录。请使用“修复列表层级与字段”。');
       const data=rows.slice(0,5).map(row=>listValues(row,c));
       for(const f of c.fields.filter(f=>f.scope==='list')) if(data.every(r=>!r[f.id]))warnings.push(`“${f.name}”在预览中全部为空。`);
       return {count:rows.length,records:data,detail:detailValues(c),warnings};
+    }
+    function repair(input) {
+      const c=validate(input), oldRows=items(c), original=oldRows[0];
+      if(!original)throw new Error('当前列表规则没有匹配记录，请先重新点选列表。');
+      const fields=c.fields.filter(f=>f.scope==='list');
+      const targets=fields.map(f=>({field:f,element:(f.selector===':scope'?original:original.querySelector(f.selector)) || get(f.selector)})).filter(t=>visible(t.element));
+      if(!targets.length)throw new Error('没有找到字段样例，请先点选至少一个列表字段。');
+      let unit=VisualLocator.probableItem(targets[0].element,root);
+      while(unit && !targets.every(t=>unit.contains(t.element)))unit=unit.parentElement;
+      if(!unit || unit===root || unit===document.body)throw new Error('字段分布在不同区域，请重新点选同一条记录内的字段。');
+      const proposed=VisualLocator.listSelector(unit,root);
+      if(proposed.count<2)throw new Error('尚未识别到重复记录，请重新点选一张完整卡片。');
+      const nextRows=[...root.querySelectorAll(proposed.selector)].filter(visible);
+      for(const {field,element}of targets) {
+        const targetRow=nextRows.find(row=>row.contains(element));
+        if(targetRow)field.selector=VisualLocator.unique(element,targetRow);
+      }
+      if(c.detail?.clickSelector) {
+        const target=original.querySelector(c.detail.clickSelector);
+        const targetRow=target && nextRows.find(row=>row.contains(target));
+        if(targetRow)c.detail.clickSelector=VisualLocator.unique(target,targetRow);
+      }
+      c.listSelector=proposed.selector;
+      const check=preview(c);
+      return {config:c,previous:oldRows.length,count:check.count,warnings:check.warnings};
     }
     function pick({kind, listSelector: list=''}) {
       if(running)throw new Error('请先暂停再修改点选。');
@@ -203,7 +230,7 @@
         tip.style.cssText='position:fixed;left:14px;bottom:14px;z-index:2147483647;background:#123b3a;color:white;padding:10px 16px;border-radius:8px;font:14px system-ui;pointer-events:none';
         document.documentElement.append(overlay,tip);
         const paint=()=>{if(!selected)return;const r=selected.getBoundingClientRect();Object.assign(overlay.style,{left:r.left+'px',top:r.top+'px',width:r.width+'px',height:r.height+'px'});};
-        const move=e=>{if(!visible(e.target) || e.target===hovered || (root!==document && !root.contains(e.target)))return;hovered=e.target;selected=kind==='list'?VisualLocator.probableItem(hovered,root):hovered;paint();};
+        const move=e=>{if(!visible(e.target) || e.target===hovered || (root!==document && !root.contains(e.target)))return;hovered=e.target;selected=kind==='list'?VisualLocator.probableItem(hovered,root):(kind==='next'?(hovered.closest('button,a,[role="button"]') || hovered):hovered);paint();};
         const cleanup=()=>{document.removeEventListener('mousemove',move,true);document.removeEventListener('click',click,true);document.removeEventListener('keydown',keyDown,true);overlay.remove();tip.remove();clearTimeout(timer);cancelledPick=null;};
         const cancel=()=>{cleanup();reject(new Error('已取消点选。'));};
         const click=e=>{
@@ -229,7 +256,7 @@
         document.addEventListener('mousemove',move,true);document.addEventListener('click',click,true);document.addEventListener('keydown',keyDown,true);
       });
     }
-    return {start,stop,clear,preview,pick,snapshot,restore,cancelPick:()=>cancelledPick?.()};
+    return {start,stop,clear,preview,repair,pick,snapshot,restore,cancelPick:()=>cancelledPick?.()};
   }
   globalThis.VisualEngine={create,validate};
 })();

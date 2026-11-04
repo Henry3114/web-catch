@@ -52,6 +52,7 @@
     if(action==='pick')return engine.pick(payload);
     if(action==='cancelPick'){engine.cancelPick();return {};}
     if(action==='preview')return engine.preview(payload);
+    if(action==='repair')return engine.repair(payload);
     if(action==='start')return engine.start(payload);
     if(action==='stop')return engine.stop();
     if(action==='clear')return engine.clear();

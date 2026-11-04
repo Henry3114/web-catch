@@ -17,6 +17,12 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 import build
 
+NESTED_JOBS = '''<div class="leftbox"><div class="jobs">
+<div class="virtual-slot"><div class="joblist-item" style="height:140px"><div class="joblist-item-job-wrapper"><span class="jname text-cut">运营支持一</span><span class="cname text-cut">公司一</span><span class="sal text-cut">8千-1.3万</span></div></div></div>
+<div class="virtual-slot"><div class="joblist-item" style="height:140px"><div class="joblist-item-job-wrapper"><span class="jname text-cut">运营支持二</span><span class="cname text-cut">公司二</span><span class="sal text-cut">1-2万</span></div></div></div>
+<div class="virtual-slot"><div class="joblist-item" style="height:140px"><div class="joblist-item-job-wrapper"><span class="jname text-cut">运营支持三</span><span class="cname text-cut">公司三</span><span class="sal text-cut">18-25万/年</span></div></div></div>
+</div><div class="pagination" style="height:50px">页码区域</div></div>'''
+
 
 class VisualCollectorTests(unittest.TestCase):
     @classmethod
@@ -110,6 +116,59 @@ class VisualCollectorTests(unittest.TestCase):
         name.hover(); name.click()
         self.assertIn('匹配 6 条', self.page.locator('#list-summary').inner_text())
         self.assertIn('tr.record', self.page.locator('#list-selector').input_value())
+
+    def nested_jobs(self):
+        self.page.evaluate("html=>document.querySelector('#demo-page').innerHTML=html",NESTED_JOBS)
+        return self.page.evaluate("""() => {
+          const c=VisualDemo.example();c.name='嵌套职位测试';c.listSelector='div.leftbox > div';
+          c.fields=[['title','职位名称','.jname'],['company','公司名称','.cname'],['salary','薪资范围','.sal']]
+            .map(([id,name,selector])=>({id,name,scope:'list',type:'text',selector:'div.joblist-item:nth-of-type(1) '+selector}));
+          c.keyFields=[];c.detail={};c.pagination={mode:'none',selector:''};c.options.count=3;return c;
+        }""")
+
+    def test_nested_job_cards_are_selected_instead_of_outer_columns(self):
+        self.nested_jobs()
+        selector=self.page.evaluate("""() => {
+          const unit=VisualLocator.probableItem(document.querySelector('.jname'),document.querySelector('#demo-page'));
+          return {className:unit.className,...VisualLocator.listSelector(unit,document.querySelector('#demo-page'))};
+        }""")
+        self.assertEqual(selector['className'],'joblist-item')
+        self.assertEqual(selector['count'],3)
+        self.assertNotIn('nth-of-type(1)',selector['selector'])
+
+    def test_repair_rebases_first_record_paths_and_collects_three_distinct_jobs(self):
+        config=self.nested_jobs()
+        bad=self.page.evaluate('c=>VisualDemo.engine.preview(c)',config)
+        self.assertEqual(bad['count'],2)
+        self.assertTrue(any('外层容器' in warning for warning in bad['warnings']))
+        result=self.page.evaluate('c=>VisualDemo.engine.repair(c)',config)
+        self.assertEqual(result['count'],3)
+        self.assertEqual(result['previous'],2)
+        self.assertTrue(all('joblist-item:nth' not in f['selector'] for f in result['config']['fields']))
+        self.page.evaluate('c=>VisualDemo.engine.start(c)',result['config'])
+        self.tick("VisualDemo.engine.snapshot().status==='done'")
+        rows=self.page.evaluate('VisualDemo.engine.snapshot().records')
+        self.assertEqual([row['title'] for row in rows],['运营支持一','运营支持二','运营支持三'])
+        self.assertEqual([row['company'] for row in rows],['公司一','公司二','公司三'])
+        self.assertEqual([row['salary'] for row in rows],['8千-1.3万','1-2万','18-25万/年'])
+
+    def test_repair_button_updates_existing_visual_template(self):
+        config=self.nested_jobs()
+        self.page.evaluate('c=>VisualDemo.studio.loadConfig(c)',config)
+        self.page.locator('#repair-list').click()
+        self.page.wait_for_function("document.querySelector('#notice').textContent.includes('已修复列表')")
+        self.assertIn('匹配 3 条',self.page.locator('#list-summary').inner_text())
+        self.page.locator('#preview').click()
+        self.page.wait_for_function("document.querySelector('#preview-table').textContent.includes('运营支持三')")
+        self.assertEqual(self.page.locator('#preview-table tr').count(),4)
+
+    def test_pagination_icon_picker_selects_its_button(self):
+        self.page.evaluate("document.querySelector('#next').innerHTML='下一页 <i class=arrow>›</i>'")
+        self.page.locator('#mode').select_option('next')
+        self.page.locator('#pick-next').click()
+        arrow=self.page.locator('#next .arrow');arrow.hover();arrow.click()
+        self.assertEqual(self.page.locator('#next-selector').input_value(),'#next')
+        self.assertEqual(self.page.evaluate('VisualDemo.page'),0)
 
     def test_template_save_reload_and_json_roundtrip(self):
         self.page.locator('#example').click(); self.page.locator('#name').fill('我的模板')

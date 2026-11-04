@@ -12,7 +12,7 @@
       <section class="card"><div class="cardhead"><h2>模板</h2><button id="new">新建</button></div>
       <select id="templates"><option value="">选择已保存模板</option></select><label>模板名称<input id="name" maxlength="80"></label><p id="template-host" class="hint"></p><button id="bind">绑定当前网站</button>
       <div class="buttons"><button id="save">保存到本机</button><button id="json">导出模板</button><button id="import">导入模板</button><button id="delete-template" class="danger">删除模板</button></div><input id="file" type="file" accept="application/json,.json" hidden></section>
-      <section class="card"><div class="cardhead"><h2><span class="step">1</span>选择列表</h2><button id="pick-list">点选一整条记录</button></div>
+      <section class="card"><div class="cardhead"><h2><span class="step">1</span>选择列表</h2><button id="pick-list">点选一整条记录</button></div><button id="repair-list">修复列表层级与字段</button>
       <p class="hint">移到一条完整记录上，按 ↑ 可扩大选择，点击确认；Esc 取消。</p><p id="list-summary" class="selector">尚未选择</p>
       <details><summary>手动调整列表定位规则</summary><input id="list-selector" placeholder="CSS 定位规则"></details></section>
       <section class="card"><div class="cardhead"><h2><span class="step">2</span>定义字段</h2><button id="add">＋ 添加字段</button></div><div id="fields"></div>
@@ -108,6 +108,7 @@
     $('connect').onclick=safe(connect);
     $('bind').onclick=safe(async()=>{await connect();config.match.origin=new URL(context.url).origin;$('template-host').textContent='适用网站：'+config.match.origin;notify('已绑定当前网站，请重新预览或点选需要调整的字段。');});
     $('pick-list').onclick=safe(async()=>{const data=await pick('list');config.listSelector=data.selector;$('list-selector').value=data.selector;$('list-summary').textContent=`匹配 ${data.count} 条 · ${data.selector}`;notify(`已识别 ${data.count} 条记录，接下来添加字段。`);});
+    $('repair-list').onclick=safe(async()=>{const repaired=await api('repair',readForm());config=repaired.config;form();$('list-summary').textContent=`匹配 ${repaired.count} 条 · ${config.listSelector}`;notify(`已修复列表：${repaired.previous} → ${repaired.count} 条；字段改为每条记录内读取。${latest?.records.length?'请先导出并清空旧结果，再预览运行。':'请先预览确认每行正确。'}`+(repaired.warnings.length?'\n'+repaired.warnings.join('\n'):''),!!repaired.warnings.length);});
     $('add').onclick=()=>{readForm();config.fields.push({id:crypto.randomUUID(),name:'字段'+(config.fields.length+1),scope:'list',type:'text',selector:''});refreshFields();};
     $('mode').onchange=()=>{$('next-block').hidden=!['next','load'].includes($('mode').value);};
     $('pick-next').onclick=safe(async()=>{const result=await pick('next');$('next-selector').value=result.selector;notify('已选择翻页按钮。');});

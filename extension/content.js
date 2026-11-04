@@ -31,6 +31,7 @@
       if(request.action==='pick')return engine.pick(request.payload);
       if(request.action==='cancelPick'){engine.cancelPick();return {};}
       if(request.action==='preview')return engine.preview(request.payload);
+      if(request.action==='repair')return engine.repair(request.payload);
       if(request.action==='start')return engine.start(request.payload);
       if(request.action==='stop')return engine.stop();
       if(request.action==='clear')return engine.clear();
