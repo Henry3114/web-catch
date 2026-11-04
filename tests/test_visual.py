@@ -158,6 +158,16 @@ class VisualCollectorTests(unittest.TestCase):
         self.assertEqual(len(state['records']),10)
         self.assertEqual(len({r['_key'] for r in state['records']}),10)
 
+    def test_resume_can_pass_already_collected_pages(self):
+        self.page.evaluate("""() => {const c=VisualDemo.example();c.fields=c.fields.filter(f=>f.scope==='list');c.options.count=8;VisualDemo.engine.start(c);} """)
+        self.tick("VisualDemo.engine.snapshot().status==='done'")
+        self.page.locator('#reset-page').click()
+        self.page.evaluate("""() => {const c=VisualDemo.engine.snapshot().config;c.options.count=14;VisualDemo.engine.start(c);} """)
+        self.tick("VisualDemo.engine.snapshot().status==='done'")
+        state=self.page.evaluate('VisualDemo.engine.snapshot()')
+        self.assertEqual(len(state['records']),14)
+        self.assertEqual(len({r['_key'] for r in state['records']}),14)
+
     def test_validation_rejects_duplicate_fields_and_template_is_inert(self):
         error=self.page.evaluate("""() => {try{const c=VisualDemo.example();c.fields[1].name=c.fields[0].name;VisualEngine.validate(c);return ''}catch(e){return e.message}}""")
         self.assertIn('唯一',error)

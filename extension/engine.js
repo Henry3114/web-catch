@@ -115,6 +115,7 @@
     }
     async function advance(c, previous) {
       if (c.pagination.mode==='none') return false;
+      const before=JSON.stringify(items(c).map(row=>key(row,listValues(row,c),c)));
       if (c.pagination.mode==='scroll') {
         const last=items(c).at(-1);
         last?.scrollIntoView({block:'end'});
@@ -130,7 +131,8 @@
       const deadline=Date.now()+c.options.timeout;
       while(Date.now()<deadline) {
         check();
-        if(items(c).some(row=>!previous.has(key(row,listValues(row,c),c)))) {state.pending=null; return true;}
+        const current=items(c).map(row=>key(row,listValues(row,c),c));
+        if(current.some(id=>!previous.has(id)) || JSON.stringify(current)!==before) {state.pending=null; return true;}
         await sleep(300);
       }
       state.pending=null; return false;
@@ -171,6 +173,7 @@
       const structure=config=>JSON.stringify({...config,options:undefined,name:undefined});
       if(state.records.length && structure(c)!==structure(state.config)) throw new Error('字段或定位配置已改变，请先导出并清空已有结果，再运行新配置。');
       if(!state.config)state.source=url();
+      state.page=state.pending?.nextPage || 1;
       state.config=c;state.pending=null;running=true;
       await emit('正在运行，请保持目标网页打开。','running');
       task=loop(c).finally(()=>{task=null;});
