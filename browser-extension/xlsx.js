@@ -4,6 +4,18 @@
   const HEADERS = ["岗位名称", "薪资待遇", "工作地点", "经验要求", "学历要求", "职位标签", "公司名称", "公司行业", "公司规模", "融资阶段", "公司信息", "公司简介", "职位描述", "岗位描述", "岗位要求", "福利待遇", "工作地址", "详情面板全文", "职位链接", "搜索页链接", "采集时间"];
   const encoder = new TextEncoder();
   const safe = value => String(value ?? "").replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\ufffe\uffff]/g, "");
+  function salaryText(value) {
+    const text = safe(value).replace(/\s+/g, '');
+    if (/[\uE000-\uF8FF\u{F0000}-\u{FFFFD}\u{100000}-\u{10FFFD}]/u.test(text)) return '';
+    return /面议|\d+(?:\.\d+)?(?:[-~–—至]\d+(?:\.\d+)?)?(?:[kK千万元]|元\/|元每)/.test(text) ? text : '';
+  }
+  function qualifications(value) {
+    const text = String(value || '');
+    return {
+      experience: text.match(/经验不限|在校\s*\/\s*应届|在校生|应届(?:毕业)?生|\d+(?:[-~–—]\d+)?年(?:以上|以内|以下)?/u)?.[0] || '',
+      education: text.match(/学历不限|博士|硕士|本科|大专|中专\/中技|中专|中技|高中|初中/u)?.[0] || ''
+    };
+  }
   const xml = value => safe(value).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
   const declaration = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
   function column(n) {
@@ -11,9 +23,9 @@
     for (; n; n = Math.floor((n - 1) / 26)) out = String.fromCharCode(65 + (n - 1) % 26) + out;
     return out;
   }
-  function sheet(rows) {
+  function sheet(rows, drawing = false) {
     const body = rows.map((row, r) => `<row r="${r + 1}"${r ? ' ht="90" customHeight="1"' : ""}>${row.map((v, c) => `<c r="${column(c + 1)}${r + 1}" t="inlineStr" s="${r ? 1 : 2}"><is><t xml:space="preserve">${xml(v)}</t></is></c>`).join("")}</row>`).join("");
-    return declaration + `<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews><cols><col min="1" max="${rows[0].length}" width="30" customWidth="1"/></cols><sheetData>${body}</sheetData><autoFilter ref="A1:${column(rows[0].length)}${rows.length}"/></worksheet>`;
+    return declaration + `<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews><cols><col min="1" max="${rows[0].length}" width="30" customWidth="1"/></cols><sheetData>${body}</sheetData><autoFilter ref="A1:${column(rows[0].length)}${rows.length}"/>${drawing ? '<drawing r:id="rId1"/>' : ''}</worksheet>`;
   }
   const crcTable = Array.from({length: 256}, (_, i) => {
     for (let j = 0; j < 8; j++) i = (i & 1) ? 0xedb88320 ^ (i >>> 1) : i >>> 1;
@@ -35,7 +47,7 @@
     const locals = [], central = [];
     let offset = 0;
     for (const [filename, content] of Object.entries(files)) {
-      const name = encoder.encode(filename), data = encoder.encode(content), crc = crc32(data);
+      const name = encoder.encode(filename), data = typeof content === 'string' ? encoder.encode(content) : content, crc = crc32(data);
       const local = new Uint8Array(30 + name.length), view = new DataView(local.buffer);
       view.setUint32(0, 0x04034b50, true); view.setUint16(4, 20, true); view.setUint16(6, 0x800, true);
       view.setUint16(12, 33, true); view.setUint32(14, crc, true); view.setUint32(18, data.length, true); view.setUint32(22, data.length, true); view.setUint16(26, name.length, true); local.set(name, 30);
@@ -48,8 +60,17 @@
     return concat([...locals, directory, end]);
   }
   function createWorkbook(records, errors = []) {
+    records = records.map(record => {
+      const tags = qualifications(record['职位标签']);
+      return {...record, '薪资待遇': salaryText(record['薪资待遇']),
+        '经验要求': record['经验要求'] || tags.experience, '学历要求': record['学历要求'] || tags.education};
+    });
+    const hasImage = record => /^data:image\/png;base64,[A-Za-z0-9+/=]+$/.test(record._salaryImage?.data || '');
+    const headers = HEADERS.filter(key => records.some(r => safe(r[key]).trim() || (key === '薪资待遇' && hasImage(r))));
+    if (!headers.length) headers.push('岗位名称');
+    const images = records.flatMap((r, i) => !r['薪资待遇'] && hasImage(r) ? [{...r._salaryImage, row: i + 1, col: headers.indexOf('薪资待遇')}] : []);
     const overflow = [["职位序号", "字段", "分段序号", "内容（按序拼接）"]];
-    const rows = [HEADERS, ...records.map((record, i) => HEADERS.map(key => {
+    const rows = [headers, ...records.map((record, i) => headers.map(key => {
       const value = safe(record[key]);
       if (value.length <= 32767) return value;
       // 按 Unicode 字符切片，避免截断 emoji 的代理对；每段 UTF-16 长度也低于上限。
@@ -66,8 +87,20 @@
       "xl/_rels/workbook.xml.rels": declaration + `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${sheets.map((_, i) => `<Relationship Id="rId${i + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${i + 1}.xml"/>`).join("")}<Relationship Id="rId4" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>`,
       "xl/styles.xml": declaration + '<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><fonts count="2"><font><sz val="11"/><name val="等线"/></font><font><b/><sz val="11"/><color rgb="FFFFFFFF"/><name val="等线"/></font></fonts><fills count="3"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FF008C95"/></patternFill></fill></fills><borders count="1"><border/></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="3"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0" applyAlignment="1"><alignment vertical="top" wrapText="1"/></xf><xf numFmtId="0" fontId="1" fillId="2" borderId="0" xfId="0"/></cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>'
     };
-    sheets.forEach((rows, i) => {files[`xl/worksheets/sheet${i + 1}.xml`] = sheet(rows);});
+    if (images.length) {
+      files['[Content_Types].xml'] = files['[Content_Types].xml'].replace('</Types>', '<Default Extension="png" ContentType="image/png"/><Override PartName="/xl/drawings/drawing1.xml" ContentType="application/vnd.openxmlformats-officedocument.drawing+xml"/></Types>');
+      files['xl/worksheets/_rels/sheet1.xml.rels'] = declaration + '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/drawing" Target="../drawings/drawing1.xml"/></Relationships>';
+      files['xl/drawings/_rels/drawing1.xml.rels'] = declaration + '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' + images.map((_, i) => `<Relationship Id="rId${i + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="../media/salary${i + 1}.png"/>`).join('') + '</Relationships>';
+      files['xl/drawings/drawing1.xml'] = declaration + '<xdr:wsDr xmlns:xdr="http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">' + images.map((img, i) => {
+        const width = Math.min(Number(img.width) || 180, 205), height = Math.min(Number(img.height) || 40, 105);
+        const cx = Math.round(width * 9525), cy = Math.round(height * 9525);
+        const binary = atob(img.data.split(',')[1]);
+        files[`xl/media/salary${i + 1}.png`] = Uint8Array.from(binary, c => c.charCodeAt(0));
+        return `<xdr:oneCellAnchor><xdr:from><xdr:col>${img.col}</xdr:col><xdr:colOff>19050</xdr:colOff><xdr:row>${img.row}</xdr:row><xdr:rowOff>19050</xdr:rowOff></xdr:from><xdr:ext cx="${cx}" cy="${cy}"/><xdr:pic><xdr:nvPicPr><xdr:cNvPr id="${i + 1}" name="薪资原图${i + 1}" descr="特殊字体薪资的页面显示图片"/><xdr:cNvPicPr/></xdr:nvPicPr><xdr:blipFill><a:blip xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" r:embed="rId${i + 1}"/><a:stretch><a:fillRect/></a:stretch></xdr:blipFill><xdr:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></xdr:spPr></xdr:pic><xdr:clientData/></xdr:oneCellAnchor>`;
+      }).join('') + '</xdr:wsDr>';
+    }
+    sheets.forEach((rows, i) => {files[`xl/worksheets/sheet${i + 1}.xml`] = sheet(rows, i === 0 && images.length > 0);});
     return zip(files);
   }
-  globalThis.BossXlsx = {createWorkbook, HEADERS};
+  globalThis.BossXlsx = {createWorkbook, HEADERS, salaryText, qualifications};
 })();

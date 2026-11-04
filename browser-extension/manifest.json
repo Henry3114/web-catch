@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "BOSS 职位导出 Excel",
-  "version": "1.1.1",
+  "version": "1.2.0",
   "description": "在已登录的 BOSS 职位搜索页逐条读取可见详情，保存为 Excel。遇到验证时暂停。",
   "permissions": ["activeTab", "scripting", "storage"],
   "action": {"default_title": "按已保存的数量采集并导出Excel（右键→选项可设置）"},

@@ -18,6 +18,46 @@
     }
     return "";
   };
+  const firstElement = (root, selectors) => {
+    for (const selector of selectors) {
+      const el = [...root.querySelectorAll(selector)].find(e => visible(e) && ownText(e));
+      if (el) return el;
+    }
+    return null;
+  };
+  function companyName(root) {
+    return first(root, ['.company-name', '.company-title', '.company-name-text', '.company-info .name',
+      'a[href*="/gongsi/"]', 'a[href*="/company/"]']);
+  }
+  async function salaryPicture(element) {
+    if (!element?.isConnected) return null;
+    try {
+      await Promise.race([document.fonts.ready, sleep(2500)]);
+      const box = element.getBoundingClientRect(), pad = 6;
+      if (!box.width || !box.height || box.width > 600 || box.height > 160) return null;
+      const width = Math.ceil(box.width) + pad * 2, height = Math.ceil(box.height) + pad * 2;
+      const canvas = document.createElement('canvas');
+      canvas.width = width * 2; canvas.height = height * 2;
+      const ctx = canvas.getContext('2d'); ctx.scale(2, 2);
+      ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, width, height); ctx.textBaseline = 'top';
+      const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+      for (let node; (node = walker.nextNode());) {
+        if (!visible(node.parentElement)) continue;
+        const css = getComputedStyle(node.parentElement);
+        ctx.font = `${css.fontStyle} ${css.fontWeight} ${css.fontSize} ${css.fontFamily}`;
+        if (!document.fonts.check(ctx.font, node.textContent)) return null;
+        ctx.fillStyle = css.color;
+        let offset = 0;
+        for (const ch of node.textContent) {
+          const range = document.createRange();
+          range.setStart(node, offset); range.setEnd(node, offset + ch.length); offset += ch.length;
+          const r = range.getBoundingClientRect();
+          if (r.width && r.height && ch.trim()) ctx.fillText(ch, r.left - box.left + pad, r.top - box.top + pad);
+        }
+      }
+      return {data: canvas.toDataURL('image/png'), width, height};
+    } catch {return null;}
+  }
   let state = null, loading = null, running = false, task = null, message = "可修改目标数量后开始采集。";
   let collapsed = true, hidden = false;
   let host = null, shadow = null;
@@ -144,16 +184,18 @@
     for (const node of nodes) {
       const title = first(node, TITLE);
       if (!title) continue;
-      const salary = first(node, [".job-salary", ".salary"]);
-      const company = first(node, [".company-name", ".company-title"]);
+      const salaryElement = firstElement(node, ['.job-salary', '.salary']);
+      const salaryRaw = ownText(salaryElement);
+      const salary = BossXlsx.salaryText(salaryRaw);
+      const company = companyName(node);
       const area = first(node, [".job-area", ".job-location", ".company-location"]);
       const link = [...node.querySelectorAll("a[href]")].map(a => canonical(a.href)).find(Boolean) || "";
       const dataId = node.getAttribute("data-jobid") || node.getAttribute("data-job-id") || "";
-      const key = link || (dataId ? "job:" + dataId : "card:" + [title, company, salary, area].map(norm).join("|"));
-      if (!result.has(key)) result.set(key, {node, key, link, title, salary, company, area,
+      const key = link || (dataId ? "job:" + dataId : "card:" + [title, company, salaryRaw, area].map(norm).join("|"));
+      if (!result.has(key)) result.set(key, {node, key, link, title, salary, salaryElement, company, area,
         tags: first(node, [".job-tag-list", ".tag-list"]),
         companyTags: first(node, [".company-tag-list"]),
-        companyInfo: first(node, [".company-info", ".company-box"]),
+        companyInfo: first(node, [".company-info", ".company-box", '.job-card-footer', '.job-card-bottom']),
         selected: /(^|\s)(?:active|selected|current|is-active|is-selected)(?:\s|$)/.test(node.className) || node.getAttribute("aria-selected") === "true"});
     }
     return [...result.values()];
@@ -183,10 +225,11 @@
       }
       description = parts.join("\n\n");
     }
-    return {root, description,
+    const salaryElement = firstElement(root, ['.salary', '.job-salary']);
+    return {root, description, salaryElement,
       title: first(root, [".name h1", ".job-name", ".job-title", "h1", "h2"]),
-      salary: first(root, [".salary", ".job-salary"]),
-      company: first(root, [".sider-company .company-name", ".sider-company .company-info a", ".job-detail-company .company-name", ".company-name"]),
+      salary: BossXlsx.salaryText(ownText(salaryElement)),
+      company: companyName(root) || first(root, [".sider-company .company-info a"]),
       companyInfo: first(root, [".sider-company", ".job-detail-company", ".company-info"]),
       companyTags: [...root.querySelectorAll(".sider-company .company-info p, .company-tag-list li")].filter(visible).map(ownText).join("\n"),
       intro: [...root.querySelectorAll(".job-sec,.job-detail-section")].filter(el => visible(el) && /^(公司介绍|公司简介)/.test(ownText(el))).map(ownText).join("\n\n"),
@@ -261,7 +304,10 @@
         const signature = [detail.title, detail.description, detail.salary, detail.company, detail.text].join("\n");
         if (salaryMatches && companyMatches && idMatches && (changed || linked || wasCurrent)) {
           if (last !== signature) {last = signature; stableSince = Date.now();}
-          if (Date.now() - stableSince >= 1000) return detail;
+          if (Date.now() - stableSince >= 1000) {
+            if (!detail.salary && !card.salary) detail.salaryImage = await salaryPicture(detail.salaryElement || card.salaryElement);
+            return detail;
+          }
         } else {last = ""; stableSince = 0;}
       } else {last = ""; stableSince = 0;}
       await sleep(250);
@@ -283,15 +329,17 @@
     const tags = [...new Set((card.companyTags + "\n" + detail.companyTags).split("\n").filter(Boolean))];
     const scale = tags.find(t => /\d.*人/.test(t)) || "";
     const funding = tags.find(t => /融资|上市|[A-H]轮|天使|不需要/.test(t)) || "";
+    const qualifications = BossXlsx.qualifications([card.tags, detail.tags].filter(Boolean).join('\n'));
     return {
       "岗位名称": detail.title, "薪资待遇": detail.salary || card.salary, "工作地点": detail.area || card.area,
-      "经验要求": detail.experience, "学历要求": detail.education, "职位标签": detail.tags || card.tags,
+      "经验要求": detail.experience || qualifications.experience, "学历要求": detail.education || qualifications.education, "职位标签": detail.tags || card.tags,
       "公司名称": detail.company || card.company, "公司行业": tags.find(t => t !== scale && t !== funding) || "",
       "公司规模": scale, "融资阶段": funding, "公司信息": [detail.companyInfo, card.companyInfo, card.companyTags].filter(Boolean).join("\n\n"),
       "公司简介": detail.intro, "职位描述": detail.description, "岗位描述": duties, "岗位要求": requirements,
       "福利待遇": detail.benefits, "工作地址": detail.address, "详情面板全文": detail.text,
       "职位链接": card.link || detail.link, "搜索页链接": location.href,
-      "采集时间": new Date(Date.now() + 8 * 3600000).toISOString().replace("Z", "+08:00")
+      "采集时间": new Date(Date.now() + 8 * 3600000).toISOString().replace("Z", "+08:00"),
+      _salaryImage: detail.salaryImage || null
     };
   }
   async function advance(seen) {
