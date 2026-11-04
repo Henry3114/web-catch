@@ -1,0 +1,232 @@
+"use strict";
+(() => {
+  if (globalThis.VisualEngine) return;
+  const LIMIT = 10000;
+  const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+  const norm = v => String(v ?? '').replace(/\s+/g,'');
+  const visible = VisualLocator.visible;
+  function validate(input) {
+    const c = structuredClone(input);
+    if (!c || c.version !== 1 || typeof c.name !== 'string' || !c.name.trim()) throw new Error('请填写模板名称。');
+    const identifier=value=>typeof value==='string' && /^[\w-]{1,100}$/.test(value) && !['__proto__','constructor','prototype'].includes(value);
+    if(!identifier(c.id))throw new Error('模板标识无效，请新建模板或修正导入文件。');
+    if (!c.listSelector) throw new Error('请先点选列表中的一整条记录。');
+    if (!Array.isArray(c.fields) || !c.fields.length || c.fields.length>100) throw new Error('请添加1至100个采集字段。');
+    const names = new Set(), ids = new Set();
+    for (const f of c.fields) {
+      if (!identifier(f.id) || ids.has(f.id) || typeof f.name!=='string' || !f.name.trim() || names.has(f.name.trim())) throw new Error('字段名称和标识必须唯一且不能为空。');
+      names.add(f.name.trim()); ids.add(f.id);
+      if (!['text','href','src'].includes(f.type) || !['list','detail'].includes(f.scope)) throw new Error('字段类型或读取区域无效。');
+      if (!f.selector || f.selector.length > 1200) throw new Error(`请点选“${f.name}”的位置。`);
+      document.createDocumentFragment().querySelector(f.selector);
+    }
+    document.createDocumentFragment().querySelector(c.listSelector);
+    c.options ||= {};
+    for (const [key, fallback, min, max] of [['count',20,1,LIMIT],['delay',1500,500,60000],['timeout',15000,1000,60000],['maxPages',30,1,500]]) {
+      c.options[key] = Number(c.options[key] ?? fallback);
+      if (!Number.isInteger(c.options[key]) || c.options[key] < min || c.options[key] > max) throw new Error(`${key} 设置超出范围（${min}–${max}）。`);
+    }
+    c.pagination ||= {mode:'none', selector:''};
+    if (!['none','next','load','scroll'].includes(c.pagination.mode)) throw new Error('翻页方式无效。');
+    if (['next','load'].includes(c.pagination.mode) && !c.pagination.selector) throw new Error('请点选下一页或加载更多按钮。');
+    for (const selector of [c.pagination.selector, c.detail?.clickSelector, c.detail?.identitySelector]) if (selector) document.createDocumentFragment().querySelector(selector);
+    if (c.fields.some(f=>f.scope==='detail')) {
+      const field = c.fields.find(f=>f.id===c.detail?.identityField && f.scope==='list');
+      if (!field || !c.detail?.identitySelector) throw new Error('有详情字段时，请设置列表中的标识字段和详情区对应的标识。');
+    }
+    c.keyFields = (c.keyFields || []).filter(id=>c.fields.some(f=>f.id===id && f.scope==='list'));
+    return c;
+  }
+  function create({root = document, onUpdate = async()=>{}, url = ()=>location.href} = {}) {
+    let running = false, task = null, cancelledPick = null;
+    let state = {status:'idle', message:'请选择列表，再添加字段。', config:null, records:[], errors:[], page:1, pending:null, source:url()};
+    const get = selector => selector === ':scope' ? root : root.querySelector(selector);
+    const items = c => [...root.querySelectorAll(c.listSelector)].filter(visible);
+    const snapshot = () => structuredClone({...state, running});
+    async function emit(message, status) {
+      if (message != null) state.message = message;
+      if (status) state.status = status;
+      await onUpdate(snapshot());
+    }
+    function check() {
+      if (!running) throw new Error('已暂停，已有结果保留。');
+      if (/安全验证|访问受限|访问异常/.test(document.title)) throw new Error('网页要求人工验证，已暂停。请手动处理后继续。');
+      for (const selector of ['.geetest_panel','.verify-page','.login-dialog','.sign-dialog']) if ([...root.querySelectorAll(selector)].some(visible)) throw new Error('请先手动完成登录或验证。');
+      if (new URL(url()).origin !== new URL(state.source).origin) throw new Error('网页来源改变，已暂停。');
+    }
+    function value(container, field) {
+      const el = field.selector === ':scope' ? container : container.querySelector(field.selector);
+      if (!el || !visible(el)) return '';
+      if (field.type === 'text') {
+        const text = (el.innerText || '').trim();
+        if (/[\uE000-\uF8FF]/u.test(text)) throw new Error(`“${field.name}”包含特殊字体字符，普通文字读取不可靠。请取消此字段或使用专门适配。`);
+        return text;
+      }
+      const target = field.type === 'href' ? (el.closest('a[href]') || el.querySelector('a[href]')) : (el.matches('img') ? el : el.querySelector('img'));
+      const raw = target?.getAttribute(field.type) || '';
+      if (!raw) return '';
+      const resolved = new URL(raw, url());
+      return /^https?:$/.test(resolved.protocol) ? resolved.href : '';
+    }
+    function listValues(row,c) {
+      return Object.fromEntries(c.fields.filter(f=>f.scope==='list').map(f=>[f.id,value(row,f)]));
+    }
+    const detailValues = c => Object.fromEntries(c.fields.filter(f=>f.scope==='detail').map(f=>[f.id,value(root,f)]));
+    function key(row, data, c) {
+      if (c.keyFields.length) {
+        const parts = c.keyFields.map(id=>data[id]);
+        if (parts.some(Boolean)) return JSON.stringify(parts);
+        throw new Error('去重字段全部为空，请重新点选。');
+      }
+      const links = c.fields.filter(f=>f.scope==='list' && f.type==='href').map(f=>data[f.id]).filter(Boolean);
+      return links[0] || norm(row.innerText);
+    }
+    async function readDetails(row, data, c) {
+      const fields = c.fields.filter(f=>f.scope==='detail');
+      if (!fields.length) return {};
+      const expected = norm(data[c.detail.identityField]);
+      if (!expected) throw new Error('当前列表记录的详情标识为空，已暂停，避免错配。');
+      const before = detailValues(c);
+      const waitId = c.detail.waitField || fields[0].id;
+      const selected = /(^|\s)(active|selected|current|is-active|is-selected)(\s|$)/.test(row.className) || row.getAttribute('aria-selected')==='true';
+      const button = c.detail.clickSelector ? row.querySelector(c.detail.clickSelector) : row;
+      if (!button) throw new Error('未找到打开详情的点击位置，请重新点选。');
+      const link = button.closest('a[href]');
+      if (link && link.getAttribute('href') && !link.getAttribute('href').startsWith('#') && !link.getAttribute('href').startsWith('javascript:')) {
+        // 此试用版只做同页详情；阻止默认新窗口跳转，保留网站自身点击处理。
+        button.addEventListener('click', event=>event.preventDefault(), {once:true});
+      }
+      button.scrollIntoView({block:'center'}); button.click();
+      const deadline = Date.now()+c.options.timeout;
+      let previous = '', since = 0;
+      while (Date.now()<deadline) {
+        check();
+        const actual = norm(value(root,{selector:c.detail.identitySelector,type:c.detail.identityType || 'text',name:'详情标识'}));
+        const details = detailValues(c);
+        const ready = expected===actual && (selected || c.detail.allowSame || details[waitId]!==before[waitId]) && fields.some(f=>details[f.id]);
+        const fingerprint = JSON.stringify(details);
+        if (ready) {
+          if (fingerprint!==previous) {previous=fingerprint; since=Date.now();}
+          if (Date.now()-since>=800) return details;
+        } else {previous=''; since=0;}
+        await sleep(200);
+      }
+      throw new Error('详情未能与当前记录对应，已暂停。请检查详情标识和等待更新字段；新标签页详情暂不支持。');
+    }
+    async function advance(c, previous) {
+      if (c.pagination.mode==='none') return false;
+      if (c.pagination.mode==='scroll') {
+        const last=items(c).at(-1);
+        last?.scrollIntoView({block:'end'});
+        for(let el=last?.parentElement;el && el!==document.body;el=el.parentElement) if(el.scrollHeight>el.clientHeight && /scroll|auto/.test(getComputedStyle(el).overflowY)) el.scrollTop=el.scrollHeight;
+        window.scrollTo(0,document.body.scrollHeight);
+      } else {
+        const button=get(c.pagination.selector);
+        if (!button || !visible(button) || button.disabled || button.getAttribute('aria-disabled')==='true' || /disabled/.test(button.className)) return false;
+        state.pending = {at:Date.now(),origin:new URL(url()).origin,nextPage:state.page+1};
+        await emit('正在翻页…');
+        button.click();
+      }
+      const deadline=Date.now()+c.options.timeout;
+      while(Date.now()<deadline) {
+        check();
+        if(items(c).some(row=>!previous.has(key(row,listValues(row,c),c)))) {state.pending=null; return true;}
+        await sleep(300);
+      }
+      state.pending=null; return false;
+    }
+    async function loop(c) {
+      const seen = new Set(state.records.map(r=>r._key));
+      try {
+        for (;state.page<=c.options.maxPages && state.records.length<c.options.count;state.page++) {
+          check();
+          const until=Date.now()+c.options.timeout;
+          while(!items(c).length && Date.now()<until){check();await sleep(250);}
+          const rows=items(c);
+          if(!rows.length) throw new Error('未找到列表记录，可能尚未加载或定位规则失效。');
+          for(const row of rows) {
+            check();
+            const data=listValues(row,c), id=key(row,data,c);
+            if(!id || seen.has(id)) continue;
+            if(!Object.values(data).some(Boolean)) throw new Error('列表字段全部为空，请先检查预览。');
+            const details=await readDetails(row,data,c);check();
+            state.records.push({...data,...details,_key:id,_source:url(),_time:new Date(Date.now()+8*3600000).toISOString().replace('Z','+08:00')});
+            seen.add(id);
+            await emit(`已采集 ${state.records.length}/${c.options.count} 条。`);
+            if(state.records.length>=c.options.count) break;
+            await sleep(c.options.delay);
+          }
+          if(state.records.length>=c.options.count || state.page>=c.options.maxPages || !await advance(c,seen)) break;
+        }
+        await emit(state.records.length>=c.options.count ? `已完成 ${Math.min(state.records.length,c.options.count)} 条，可以导出 Excel。` : `已采集 ${state.records.length} 条；没有更多记录或达到翻页上限，可导出已有结果。`,'done');
+      } catch(error) {
+        if(running) state.errors.push({url:url(),message:error.message});
+        await emit(error.message,'paused');
+      } finally {running=false;state.pending=null;await emit();}
+    }
+    async function start(config) {
+      if(running) return snapshot();
+      const c=validate(config);
+      if(c.match?.origin && c.match.origin!==new URL(url()).origin) throw new Error('此模板属于另一个网站，请切换模板或重新配置。');
+      const structure=config=>JSON.stringify({...config,options:undefined,name:undefined});
+      if(state.records.length && structure(c)!==structure(state.config)) throw new Error('字段或定位配置已改变，请先导出并清空已有结果，再运行新配置。');
+      if(!state.config)state.source=url();
+      state.config=c;state.pending=null;running=true;
+      await emit('正在运行，请保持目标网页打开。','running');
+      task=loop(c).finally(()=>{task=null;});
+      return snapshot();
+    }
+    async function stop(){running=false;if(task) await task;await emit('已暂停，已有结果保留。','paused');return snapshot();}
+    async function clear(){if(running)throw new Error('请先暂停再清空。');if(task)await task;state={...state,config:null,source:url(),records:[],errors:[],page:1,pending:null};await emit('结果已清空。','idle');return snapshot();}
+    function restore(data) {
+      if(!data?.config || !Array.isArray(data.records))return;
+      validate(data.config);
+      state=structuredClone(data);running=false;delete state.running;
+    }
+    function preview(input) {
+      const c=validate(input), rows=items(c), warnings=[];
+      const data=rows.slice(0,5).map(row=>listValues(row,c));
+      for(const f of c.fields.filter(f=>f.scope==='list')) if(data.every(r=>!r[f.id]))warnings.push(`“${f.name}”在预览中全部为空。`);
+      return {count:rows.length,records:data,detail:detailValues(c),warnings};
+    }
+    function pick({kind, listSelector: list=''}) {
+      if(running)throw new Error('请先暂停再修改点选。');
+      cancelledPick?.();
+      return new Promise((resolve,reject)=>{
+        let selected=null, hovered=null;
+        const overlay=document.createElement('div');overlay.dataset.vpcUi='picker';
+        overlay.style.cssText='position:fixed;pointer-events:none;z-index:2147483647;border:3px solid #0a9188;background:#0a91881c;box-sizing:border-box';
+        const tip=document.createElement('div');tip.dataset.vpcUi='tip';tip.textContent='点选元素 · ↑ 选外层 · ↓ 返回 · Esc 取消';
+        tip.style.cssText='position:fixed;left:14px;bottom:14px;z-index:2147483647;background:#123b3a;color:white;padding:10px 16px;border-radius:8px;font:14px system-ui;pointer-events:none';
+        document.documentElement.append(overlay,tip);
+        const paint=()=>{if(!selected)return;const r=selected.getBoundingClientRect();Object.assign(overlay.style,{left:r.left+'px',top:r.top+'px',width:r.width+'px',height:r.height+'px'});};
+        const move=e=>{if(!visible(e.target) || e.target===hovered || (root!==document && !root.contains(e.target)))return;hovered=e.target;selected=kind==='list'?VisualLocator.probableItem(hovered,root):hovered;paint();};
+        const cleanup=()=>{document.removeEventListener('mousemove',move,true);document.removeEventListener('click',click,true);document.removeEventListener('keydown',keyDown,true);overlay.remove();tip.remove();clearTimeout(timer);cancelledPick=null;};
+        const cancel=()=>{cleanup();reject(new Error('已取消点选。'));};
+        const click=e=>{
+          if(!selected)return;e.preventDefault();e.stopImmediatePropagation();
+          try {
+            let result;
+            if(kind==='list')result=VisualLocator.listSelector(selected,root);
+            else if(kind==='field-list' || kind==='detail-click') {
+              const row=[...root.querySelectorAll(list)].find(item=>item.contains(selected));
+              if(!row)throw new Error('请在列表中的某一条记录内点选；详情区字段请切换读取区域。');
+              result={selector:VisualLocator.unique(selected,row)};
+            } else result={selector:VisualLocator.unique(selected,root)};
+            result.sample=(selected.innerText || selected.getAttribute('alt') || selected.tagName).trim().slice(0,160);
+            cleanup();resolve(result);
+          } catch(error){tip.textContent=error.message+'（Esc取消）';}
+        };
+        const keyDown=e=>{
+          if(e.key==='Escape'){e.preventDefault();cancel();}
+          if(e.key==='ArrowUp' && selected?.parentElement && selected.parentElement!==root){e.preventDefault();selected=selected.parentElement;paint();}
+          if(e.key==='ArrowDown' && hovered){e.preventDefault();selected=hovered;paint();}
+        };
+        const timer=setTimeout(cancel,120000);cancelledPick=cancel;
+        document.addEventListener('mousemove',move,true);document.addEventListener('click',click,true);document.addEventListener('keydown',keyDown,true);
+      });
+    }
+    return {start,stop,clear,preview,pick,snapshot,restore,cancelPick:()=>cancelledPick?.()};
+  }
+  globalThis.VisualEngine={create,validate};
+})();

@@ -1,0 +1,580 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>网页采集工作台 · 离线演示</title><style>:root{font-family:Inter,"Microsoft YaHei",system-ui,sans-serif;color:#173e3b;background:#f4f7f6;font-size:13px;line-height:1.6}*{box-sizing:border-box}body{margin:0}button,input,select{font:inherit}button{cursor:pointer;border:1px solid #d0dfda;background:white;color:#214e47;border-radius:7px;padding:7px 10px}button:hover{border-color:#248277;background:#eef7f3}button:disabled{opacity:.5;cursor:default}input,select{min-width:0;width:100%;border:1px solid #cddbd6;border-radius:6px;padding:7px;background:white;color:#173e3b}input[type=checkbox]{width:auto}label{display:block;margin:7px 0}h1,h2,p{margin:0}h1{font-size:20px;line-height:1.4}h2{font-size:14px}small,.hint{color:#6a807a;font-size:12px}.studio{max-width:760px;margin:auto;padding:18px 14px 32px}.top{display:flex;gap:12px;align-items:center;margin-bottom:15px}.mark{background:#176b67;color:#fff;border-radius:11px;width:40px;height:40px;display:grid;place-items:center;font-weight:700;font-size:19px}.tag{display:inline-block;font-size:11px;color:#176b67;background:#e4f0e9;padding:1px 7px;border-radius:20px;margin-top:3px}.card{padding:14px;border:1px solid #deE7e2;border-radius:11px;background:white;margin:10px 0}.cardhead{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px}.step{display:inline-grid;place-items:center;background:#e7f1ed;color:#236c60;width:23px;height:23px;border-radius:50%;margin-right:6px}.row{display:flex;gap:8px;align-items:center}.row>*{flex:1}.row .fixed{flex:0 0 auto}.buttons{display:flex;gap:7px;flex-wrap:wrap;margin-top:8px}.primary{background:#176b67;color:white;border-color:#176b67}.primary:hover{background:#115952;color:white}.danger{color:#a33}.field{border:1px solid #e0e9e5;border-radius:8px;padding:10px;margin:8px 0;background:#fafcfb}.fieldname{font-weight:600}.selector{font:11px/1.5 ui-monospace,monospace;color:#617b72;overflow-wrap:anywhere;margin-top:4px}.field-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:7px}details{margin-top:9px}summary{cursor:pointer;color:#506f65;font-size:12px}#notice{position:sticky;top:0;z-index:4;border-radius:8px;padding:9px 11px;background:#e5f2ed;border:1px solid #b8d9cc;white-space:pre-wrap;overflow-wrap:anywhere;margin:9px 0}#notice.error{background:#fff0ea;border-color:#edc5b4;color:#8e3922}#progress{font-size:17px;font-weight:700;margin-bottom:5px}.tablewrap{overflow:auto;max-height:330px;margin-top:9px;border:1px solid #dde8e2;border-radius:7px}table{border-collapse:collapse;width:100%;font-size:12px}th,td{padding:7px;text-align:left;border-bottom:1px solid #e4ece8;vertical-align:top;min-width:90px;max-width:230px;overflow-wrap:anywhere}th{background:#ecf4ef;position:sticky;top:0}td{white-space:pre-wrap}.muted{color:#778d83}.source{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;font-size:12px;color:#688176}.metrics{display:flex;justify-content:space-between;align-items:center}.numberrow{display:grid;grid-template-columns:1fr 1fr;gap:8px}[hidden]{display:none!important}.footer{margin:14px 0;color:#728579;font-size:11px}.demo-link{color:#176b67;font-weight:600;text-decoration:none}.sample{padding:5px 7px;background:#eaf4ef;border-radius:5px;white-space:pre-wrap;font-size:12px;margin-top:6px;max-height:65px;overflow:auto}
+:root .quickbar{position:sticky;top:0;z-index:8;display:flex;align-items:center;gap:6px;padding:8px 0;background:#f4f7f6;border-bottom:1px solid #dbe5de}.quickbar button{padding:7px 11px}.quickbar span{margin-left:auto;white-space:nowrap}#notice{position:relative}
+
+#notice{position:relative}
+</style><style id="demo-style">
+body{background:#eaf0ec}.demo-layout{display:grid;grid-template-columns:minmax(560px,1fr) 430px;height:100vh}.target{padding:28px 26px;overflow:auto}.editor{background:#f4f7f6;border-left:1px solid #d3ded7;overflow:auto}.demo-top{margin-bottom:22px}.demo-top h1{font-size:26px}.demo-top p{color:#6b8278;margin:8px 0}.demo-tools{display:flex;gap:8px;align-items:center;margin-bottom:16px}.demo-tools .tag{margin-left:auto}.demo-content{display:grid;grid-template-columns:minmax(220px,.9fr) minmax(260px,1.1fr);gap:20px}.record{background:#fff;border:1px solid #d5e1d9;border-radius:10px;padding:16px;margin:0 0 10px;transition:border .2s}.record.active{border:2px solid #31917c;padding:15px}.record h3{font-size:15px;margin:0}.record .salary{color:#bd603c;font-weight:700;white-space:nowrap}.record .company{display:block;color:#668174;margin:8px 0}.record small{display:inline-block;color:#71867b;margin:0 7px 6px 0}.record a{font-size:11px;margin-left:8px;color:#537e70}.record button{font-size:12px;padding:5px 9px}.detail{background:#fff;border:1px solid #d6e1da;border-radius:12px;padding:22px;align-self:start;position:sticky;top:10px}.detail h2{font-size:19px}.detail h3{font-size:14px;margin:20px 0 8px}.detail p{white-space:pre-line;color:#536c60}.detail .tag{margin-top:10px}#next{width:100%;padding:10px}.demo-table{background:white;border-radius:8px;border-collapse:separate;border-spacing:0 5px}.demo-table .record td{min-width:0;padding:10px}#demo-note{border:1px dashed #b2c9b7;border-radius:8px;padding:12px;margin:14px 0;color:#597864;font-size:12px}@media(max-width:1000px){.demo-layout{grid-template-columns:1fr;height:auto}.target,.editor{overflow:visible}.editor{border-left:0}.demo-content{grid-template-columns:1fr 1fr}}
+</style></head><body><div class="demo-layout"><main id="demo-page" class="target">
+<header class="demo-top"><span class="tag">示例数据 · 不是真实招聘信息</span><h1>探索自己的采集模板</h1><p>左边是可点选的演示网页，右边是独立配置工作台。</p></header>
+<div class="demo-tools"><button id="view-cards">卡片列表</button><button id="view-table">表格列表</button><button id="reset-page">回到第1页</button><span id="page-indicator" class="tag"></span></div>
+<div class="demo-content"><div><div id="records"></div><button id="next">下一页 →</button></div><section id="demo-detail" class="detail"><h2 id="detail-title"></h2><span class="tag">同页详情</span><h3>描述</h3><p id="detail-description"></p><h3>要求</h3><p id="detail-requirements"></p></section></div>
+<p id="demo-note">这个演示完全离线。你可以先点右侧“填入演示模板”体验，也可以从“点选一整条记录”开始自由配置。运行中请不要手动换页或切换展示方式。</p></main><aside class="editor"><main id="app"></main></aside></div>
+<script>
+"use strict";
+(() => {
+  if (globalThis.VisualLocator) return;
+  const visible = el => el instanceof Element && el.getClientRects().length && getComputedStyle(el).visibility !== 'hidden' && !el.closest('[data-vpc-ui]');
+  const classes = el => [...el.classList].filter(c => /^[a-zA-Z_][\w-]*$/.test(c) && !/^(active|selected|current|hover|is-active|is-selected)$/.test(c)).slice(0,3);
+  const simple = el => el.tagName.toLowerCase() + classes(el).map(c => '.'+CSS.escape(c)).join('');
+  function unique(el, root = document) {
+    if (!(el instanceof Element) || (root !== document && !root.contains(el))) throw new Error('请选择当前网页中的元素。');
+    if (el === root) return ':scope';
+    if (el.id && !/\d{5}|[a-f0-9]{10}/i.test(el.id)) {
+      const id = '#'+CSS.escape(el.id);
+      if (root.querySelectorAll(id).length === 1) return id;
+    }
+    const testId = el.getAttribute('data-testid');
+    if (testId) {
+      const selector = `[data-testid="${CSS.escape(testId)}"]`;
+      if (root.querySelectorAll(selector).length === 1) return selector;
+    }
+    let path = simple(el), current = el;
+    if (root.querySelectorAll(path).length === 1) return path;
+    while (current.parentElement && current !== root) {
+      const parent = current.parentElement;
+      const siblings = [...parent.children].filter(x => x.tagName === current.tagName);
+      const segment = simple(current) + (siblings.length > 1 ? `:nth-of-type(${siblings.indexOf(current)+1})` : '');
+      path = current === el ? segment : segment + ' > ' + path;
+      if (parent === root) return ':scope > ' + path;
+      if(parent.id && !/\d{5}|[a-f0-9]{10}/i.test(parent.id)) {
+        const id='#'+CSS.escape(parent.id);
+        if(root.querySelectorAll(id).length===1)return id+' > '+path;
+      }
+      if (root.querySelectorAll(path).length === 1) return path;
+      current = parent;
+    }
+    return path;
+  }
+  function listSelector(el, root = document) {
+    if (!el.parentElement || el === root) throw new Error('请选择列表中的一整条记录，而不是整个页面。');
+    const selector = unique(el.parentElement, root) + ' > ' + simple(el);
+    return {selector, count: [...root.querySelectorAll(selector)].filter(visible).length};
+  }
+  function probableItem(el, root = document) {
+    const semantic=el.closest('tr,li,article,[role="listitem"]');
+    if(semantic && semantic!==root && (root===document || root.contains(semantic)))return semantic;
+    for (let current = el; current && current !== root && current !== document.body; current = current.parentElement) {
+      if (current.matches('tr,li,article,[role="listitem"]')) return current;
+      const siblings = current.parentElement ? [...current.parentElement.children] : [];
+      if (siblings.filter(s => s.matches(simple(current))).length >= 2 && current.children.length >= 2) return current;
+    }
+    return el;
+  }
+  globalThis.VisualLocator = {visible, unique, listSelector, probableItem};
+})();
+
+</script><script>
+"use strict";
+(() => {
+  if (globalThis.VisualEngine) return;
+  const LIMIT = 10000;
+  const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+  const norm = v => String(v ?? '').replace(/\s+/g,'');
+  const visible = VisualLocator.visible;
+  function validate(input) {
+    const c = structuredClone(input);
+    if (!c || c.version !== 1 || typeof c.name !== 'string' || !c.name.trim()) throw new Error('请填写模板名称。');
+    const identifier=value=>typeof value==='string' && /^[\w-]{1,100}$/.test(value) && !['__proto__','constructor','prototype'].includes(value);
+    if(!identifier(c.id))throw new Error('模板标识无效，请新建模板或修正导入文件。');
+    if (!c.listSelector) throw new Error('请先点选列表中的一整条记录。');
+    if (!Array.isArray(c.fields) || !c.fields.length || c.fields.length>100) throw new Error('请添加1至100个采集字段。');
+    const names = new Set(), ids = new Set();
+    for (const f of c.fields) {
+      if (!identifier(f.id) || ids.has(f.id) || typeof f.name!=='string' || !f.name.trim() || names.has(f.name.trim())) throw new Error('字段名称和标识必须唯一且不能为空。');
+      names.add(f.name.trim()); ids.add(f.id);
+      if (!['text','href','src'].includes(f.type) || !['list','detail'].includes(f.scope)) throw new Error('字段类型或读取区域无效。');
+      if (!f.selector || f.selector.length > 1200) throw new Error(`请点选“${f.name}”的位置。`);
+      document.createDocumentFragment().querySelector(f.selector);
+    }
+    document.createDocumentFragment().querySelector(c.listSelector);
+    c.options ||= {};
+    for (const [key, fallback, min, max] of [['count',20,1,LIMIT],['delay',1500,500,60000],['timeout',15000,1000,60000],['maxPages',30,1,500]]) {
+      c.options[key] = Number(c.options[key] ?? fallback);
+      if (!Number.isInteger(c.options[key]) || c.options[key] < min || c.options[key] > max) throw new Error(`${key} 设置超出范围（${min}–${max}）。`);
+    }
+    c.pagination ||= {mode:'none', selector:''};
+    if (!['none','next','load','scroll'].includes(c.pagination.mode)) throw new Error('翻页方式无效。');
+    if (['next','load'].includes(c.pagination.mode) && !c.pagination.selector) throw new Error('请点选下一页或加载更多按钮。');
+    for (const selector of [c.pagination.selector, c.detail?.clickSelector, c.detail?.identitySelector]) if (selector) document.createDocumentFragment().querySelector(selector);
+    if (c.fields.some(f=>f.scope==='detail')) {
+      const field = c.fields.find(f=>f.id===c.detail?.identityField && f.scope==='list');
+      if (!field || !c.detail?.identitySelector) throw new Error('有详情字段时，请设置列表中的标识字段和详情区对应的标识。');
+    }
+    c.keyFields = (c.keyFields || []).filter(id=>c.fields.some(f=>f.id===id && f.scope==='list'));
+    return c;
+  }
+  function create({root = document, onUpdate = async()=>{}, url = ()=>location.href} = {}) {
+    let running = false, task = null, cancelledPick = null;
+    let state = {status:'idle', message:'请选择列表，再添加字段。', config:null, records:[], errors:[], page:1, pending:null, source:url()};
+    const get = selector => selector === ':scope' ? root : root.querySelector(selector);
+    const items = c => [...root.querySelectorAll(c.listSelector)].filter(visible);
+    const snapshot = () => structuredClone({...state, running});
+    async function emit(message, status) {
+      if (message != null) state.message = message;
+      if (status) state.status = status;
+      await onUpdate(snapshot());
+    }
+    function check() {
+      if (!running) throw new Error('已暂停，已有结果保留。');
+      if (/安全验证|访问受限|访问异常/.test(document.title)) throw new Error('网页要求人工验证，已暂停。请手动处理后继续。');
+      for (const selector of ['.geetest_panel','.verify-page','.login-dialog','.sign-dialog']) if ([...root.querySelectorAll(selector)].some(visible)) throw new Error('请先手动完成登录或验证。');
+      if (new URL(url()).origin !== new URL(state.source).origin) throw new Error('网页来源改变，已暂停。');
+    }
+    function value(container, field) {
+      const el = field.selector === ':scope' ? container : container.querySelector(field.selector);
+      if (!el || !visible(el)) return '';
+      if (field.type === 'text') {
+        const text = (el.innerText || '').trim();
+        if (/[\uE000-\uF8FF]/u.test(text)) throw new Error(`“${field.name}”包含特殊字体字符，普通文字读取不可靠。请取消此字段或使用专门适配。`);
+        return text;
+      }
+      const target = field.type === 'href' ? (el.closest('a[href]') || el.querySelector('a[href]')) : (el.matches('img') ? el : el.querySelector('img'));
+      const raw = target?.getAttribute(field.type) || '';
+      if (!raw) return '';
+      const resolved = new URL(raw, url());
+      return /^https?:$/.test(resolved.protocol) ? resolved.href : '';
+    }
+    function listValues(row,c) {
+      return Object.fromEntries(c.fields.filter(f=>f.scope==='list').map(f=>[f.id,value(row,f)]));
+    }
+    const detailValues = c => Object.fromEntries(c.fields.filter(f=>f.scope==='detail').map(f=>[f.id,value(root,f)]));
+    function key(row, data, c) {
+      if (c.keyFields.length) {
+        const parts = c.keyFields.map(id=>data[id]);
+        if (parts.some(Boolean)) return JSON.stringify(parts);
+        throw new Error('去重字段全部为空，请重新点选。');
+      }
+      const links = c.fields.filter(f=>f.scope==='list' && f.type==='href').map(f=>data[f.id]).filter(Boolean);
+      return links[0] || norm(row.innerText);
+    }
+    async function readDetails(row, data, c) {
+      const fields = c.fields.filter(f=>f.scope==='detail');
+      if (!fields.length) return {};
+      const expected = norm(data[c.detail.identityField]);
+      if (!expected) throw new Error('当前列表记录的详情标识为空，已暂停，避免错配。');
+      const before = detailValues(c);
+      const waitId = c.detail.waitField || fields[0].id;
+      const selected = /(^|\s)(active|selected|current|is-active|is-selected)(\s|$)/.test(row.className) || row.getAttribute('aria-selected')==='true';
+      const button = c.detail.clickSelector ? row.querySelector(c.detail.clickSelector) : row;
+      if (!button) throw new Error('未找到打开详情的点击位置，请重新点选。');
+      const link = button.closest('a[href]');
+      if (link && link.getAttribute('href') && !link.getAttribute('href').startsWith('#') && !link.getAttribute('href').startsWith('javascript:')) {
+        // 此试用版只做同页详情；阻止默认新窗口跳转，保留网站自身点击处理。
+        button.addEventListener('click', event=>event.preventDefault(), {once:true});
+      }
+      button.scrollIntoView({block:'center'}); button.click();
+      const deadline = Date.now()+c.options.timeout;
+      let previous = '', since = 0;
+      while (Date.now()<deadline) {
+        check();
+        const actual = norm(value(root,{selector:c.detail.identitySelector,type:c.detail.identityType || 'text',name:'详情标识'}));
+        const details = detailValues(c);
+        const ready = expected===actual && (selected || c.detail.allowSame || details[waitId]!==before[waitId]) && fields.some(f=>details[f.id]);
+        const fingerprint = JSON.stringify(details);
+        if (ready) {
+          if (fingerprint!==previous) {previous=fingerprint; since=Date.now();}
+          if (Date.now()-since>=800) return details;
+        } else {previous=''; since=0;}
+        await sleep(200);
+      }
+      throw new Error('详情未能与当前记录对应，已暂停。请检查详情标识和等待更新字段；新标签页详情暂不支持。');
+    }
+    async function advance(c, previous) {
+      if (c.pagination.mode==='none') return false;
+      if (c.pagination.mode==='scroll') {
+        const last=items(c).at(-1);
+        last?.scrollIntoView({block:'end'});
+        for(let el=last?.parentElement;el && el!==document.body;el=el.parentElement) if(el.scrollHeight>el.clientHeight && /scroll|auto/.test(getComputedStyle(el).overflowY)) el.scrollTop=el.scrollHeight;
+        window.scrollTo(0,document.body.scrollHeight);
+      } else {
+        const button=get(c.pagination.selector);
+        if (!button || !visible(button) || button.disabled || button.getAttribute('aria-disabled')==='true' || /disabled/.test(button.className)) return false;
+        state.pending = {at:Date.now(),origin:new URL(url()).origin,nextPage:state.page+1};
+        await emit('正在翻页…');
+        button.click();
+      }
+      const deadline=Date.now()+c.options.timeout;
+      while(Date.now()<deadline) {
+        check();
+        if(items(c).some(row=>!previous.has(key(row,listValues(row,c),c)))) {state.pending=null; return true;}
+        await sleep(300);
+      }
+      state.pending=null; return false;
+    }
+    async function loop(c) {
+      const seen = new Set(state.records.map(r=>r._key));
+      try {
+        for (;state.page<=c.options.maxPages && state.records.length<c.options.count;state.page++) {
+          check();
+          const until=Date.now()+c.options.timeout;
+          while(!items(c).length && Date.now()<until){check();await sleep(250);}
+          const rows=items(c);
+          if(!rows.length) throw new Error('未找到列表记录，可能尚未加载或定位规则失效。');
+          for(const row of rows) {
+            check();
+            const data=listValues(row,c), id=key(row,data,c);
+            if(!id || seen.has(id)) continue;
+            if(!Object.values(data).some(Boolean)) throw new Error('列表字段全部为空，请先检查预览。');
+            const details=await readDetails(row,data,c);check();
+            state.records.push({...data,...details,_key:id,_source:url(),_time:new Date(Date.now()+8*3600000).toISOString().replace('Z','+08:00')});
+            seen.add(id);
+            await emit(`已采集 ${state.records.length}/${c.options.count} 条。`);
+            if(state.records.length>=c.options.count) break;
+            await sleep(c.options.delay);
+          }
+          if(state.records.length>=c.options.count || state.page>=c.options.maxPages || !await advance(c,seen)) break;
+        }
+        await emit(state.records.length>=c.options.count ? `已完成 ${Math.min(state.records.length,c.options.count)} 条，可以导出 Excel。` : `已采集 ${state.records.length} 条；没有更多记录或达到翻页上限，可导出已有结果。`,'done');
+      } catch(error) {
+        if(running) state.errors.push({url:url(),message:error.message});
+        await emit(error.message,'paused');
+      } finally {running=false;state.pending=null;await emit();}
+    }
+    async function start(config) {
+      if(running) return snapshot();
+      const c=validate(config);
+      if(c.match?.origin && c.match.origin!==new URL(url()).origin) throw new Error('此模板属于另一个网站，请切换模板或重新配置。');
+      const structure=config=>JSON.stringify({...config,options:undefined,name:undefined});
+      if(state.records.length && structure(c)!==structure(state.config)) throw new Error('字段或定位配置已改变，请先导出并清空已有结果，再运行新配置。');
+      if(!state.config)state.source=url();
+      state.config=c;state.pending=null;running=true;
+      await emit('正在运行，请保持目标网页打开。','running');
+      task=loop(c).finally(()=>{task=null;});
+      return snapshot();
+    }
+    async function stop(){running=false;if(task) await task;await emit('已暂停，已有结果保留。','paused');return snapshot();}
+    async function clear(){if(running)throw new Error('请先暂停再清空。');if(task)await task;state={...state,config:null,source:url(),records:[],errors:[],page:1,pending:null};await emit('结果已清空。','idle');return snapshot();}
+    function restore(data) {
+      if(!data?.config || !Array.isArray(data.records))return;
+      validate(data.config);
+      state=structuredClone(data);running=false;delete state.running;
+    }
+    function preview(input) {
+      const c=validate(input), rows=items(c), warnings=[];
+      const data=rows.slice(0,5).map(row=>listValues(row,c));
+      for(const f of c.fields.filter(f=>f.scope==='list')) if(data.every(r=>!r[f.id]))warnings.push(`“${f.name}”在预览中全部为空。`);
+      return {count:rows.length,records:data,detail:detailValues(c),warnings};
+    }
+    function pick({kind, listSelector: list=''}) {
+      if(running)throw new Error('请先暂停再修改点选。');
+      cancelledPick?.();
+      return new Promise((resolve,reject)=>{
+        let selected=null, hovered=null;
+        const overlay=document.createElement('div');overlay.dataset.vpcUi='picker';
+        overlay.style.cssText='position:fixed;pointer-events:none;z-index:2147483647;border:3px solid #0a9188;background:#0a91881c;box-sizing:border-box';
+        const tip=document.createElement('div');tip.dataset.vpcUi='tip';tip.textContent='点选元素 · ↑ 选外层 · ↓ 返回 · Esc 取消';
+        tip.style.cssText='position:fixed;left:14px;bottom:14px;z-index:2147483647;background:#123b3a;color:white;padding:10px 16px;border-radius:8px;font:14px system-ui;pointer-events:none';
+        document.documentElement.append(overlay,tip);
+        const paint=()=>{if(!selected)return;const r=selected.getBoundingClientRect();Object.assign(overlay.style,{left:r.left+'px',top:r.top+'px',width:r.width+'px',height:r.height+'px'});};
+        const move=e=>{if(!visible(e.target) || e.target===hovered || (root!==document && !root.contains(e.target)))return;hovered=e.target;selected=kind==='list'?VisualLocator.probableItem(hovered,root):hovered;paint();};
+        const cleanup=()=>{document.removeEventListener('mousemove',move,true);document.removeEventListener('click',click,true);document.removeEventListener('keydown',keyDown,true);overlay.remove();tip.remove();clearTimeout(timer);cancelledPick=null;};
+        const cancel=()=>{cleanup();reject(new Error('已取消点选。'));};
+        const click=e=>{
+          if(!selected)return;e.preventDefault();e.stopImmediatePropagation();
+          try {
+            let result;
+            if(kind==='list')result=VisualLocator.listSelector(selected,root);
+            else if(kind==='field-list' || kind==='detail-click') {
+              const row=[...root.querySelectorAll(list)].find(item=>item.contains(selected));
+              if(!row)throw new Error('请在列表中的某一条记录内点选；详情区字段请切换读取区域。');
+              result={selector:VisualLocator.unique(selected,row)};
+            } else result={selector:VisualLocator.unique(selected,root)};
+            result.sample=(selected.innerText || selected.getAttribute('alt') || selected.tagName).trim().slice(0,160);
+            cleanup();resolve(result);
+          } catch(error){tip.textContent=error.message+'（Esc取消）';}
+        };
+        const keyDown=e=>{
+          if(e.key==='Escape'){e.preventDefault();cancel();}
+          if(e.key==='ArrowUp' && selected?.parentElement && selected.parentElement!==root){e.preventDefault();selected=selected.parentElement;paint();}
+          if(e.key==='ArrowDown' && hovered){e.preventDefault();selected=hovered;paint();}
+        };
+        const timer=setTimeout(cancel,120000);cancelledPick=cancel;
+        document.addEventListener('mousemove',move,true);document.addEventListener('click',click,true);document.addEventListener('keydown',keyDown,true);
+      });
+    }
+    return {start,stop,clear,preview,pick,snapshot,restore,cancelPick:()=>cancelledPick?.()};
+  }
+  globalThis.VisualEngine={create,validate};
+})();
+
+</script><script>
+"use strict";
+(() => {
+  if (globalThis.VisualXlsx) return;
+  const encoder = new TextEncoder();
+  const safe = value => String(value ?? "").replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\ufffe\uffff]/g, "");
+  const xml = value => safe(value).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  const declaration = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
+  function column(n) {
+    let out = "";
+    for (; n; n = Math.floor((n - 1) / 26)) out = String.fromCharCode(65 + (n - 1) % 26) + out;
+    return out;
+  }
+  function sheet(rows) {
+    const body = rows.map((row, r) => `<row r="${r + 1}"${r ? ' ht="90" customHeight="1"' : ""}>${row.map((v, c) => `<c r="${column(c + 1)}${r + 1}" t="inlineStr" s="${r ? 1 : 2}"><is><t xml:space="preserve">${xml(v)}</t></is></c>`).join("")}</row>`).join("");
+    return declaration + `<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews><cols><col min="1" max="${rows[0].length}" width="30" customWidth="1"/></cols><sheetData>${body}</sheetData><autoFilter ref="A1:${column(rows[0].length)}${rows.length}"/></worksheet>`;
+  }
+  const crcTable = Array.from({length: 256}, (_, i) => {
+    for (let j = 0; j < 8; j++) i = (i & 1) ? 0xedb88320 ^ (i >>> 1) : i >>> 1;
+    return i >>> 0;
+  });
+  function crc32(bytes) {
+    let c = 0xffffffff;
+    for (const b of bytes) c = crcTable[(c ^ b) & 255] ^ (c >>> 8);
+    return (c ^ 0xffffffff) >>> 0;
+  }
+  function concat(chunks) {
+    const out = new Uint8Array(chunks.reduce((n, item) => n + item.length, 0));
+    let offset = 0;
+    for (const chunk of chunks) {out.set(chunk, offset); offset += chunk.length;}
+    return out;
+  }
+  // 标准 ZIP STORE + Office Open XML；不下载或执行第三方脚本。
+  function zip(files) {
+    const locals = [], central = [];
+    let offset = 0;
+    for (const [filename, content] of Object.entries(files)) {
+      const name = encoder.encode(filename), data = typeof content === 'string' ? encoder.encode(content) : content, crc = crc32(data);
+      const local = new Uint8Array(30 + name.length), view = new DataView(local.buffer);
+      view.setUint32(0, 0x04034b50, true); view.setUint16(4, 20, true); view.setUint16(6, 0x800, true);
+      view.setUint16(12, 33, true); view.setUint32(14, crc, true); view.setUint32(18, data.length, true); view.setUint32(22, data.length, true); view.setUint16(26, name.length, true); local.set(name, 30);
+      const directory = new Uint8Array(46 + name.length), dv = new DataView(directory.buffer);
+      dv.setUint32(0, 0x02014b50, true); dv.setUint16(4, 20, true); dv.setUint16(6, 20, true); dv.setUint16(8, 0x800, true); dv.setUint16(14, 33, true); dv.setUint32(16, crc, true); dv.setUint32(20, data.length, true); dv.setUint32(24, data.length, true); dv.setUint16(28, name.length, true); dv.setUint32(42, offset, true); directory.set(name, 46);
+      locals.push(local, data); central.push(directory); offset += local.length + data.length;
+    }
+    const directory = concat(central), end = new Uint8Array(22), ev = new DataView(end.buffer);
+    ev.setUint32(0, 0x06054b50, true); ev.setUint16(8, central.length, true); ev.setUint16(10, central.length, true); ev.setUint32(12, directory.length, true); ev.setUint32(16, offset, true);
+    return concat([...locals, directory, end]);
+  }
+  function createWorkbook(records, fields, {dropEmpty = true, errors = []} = {}) {
+    const all = [...fields, {id: '_source', name: '来源页面'}, {id: '_time', name: '采集时间'}];
+    const columns = all.filter(f => !dropEmpty || records.some(r => safe(r[f.id]).trim()));
+    if (!columns.length) columns.push({id: '_source', name: '来源页面'});
+    const overflow = [['记录序号', '字段', '分段', '完整内容（按序拼接）']];
+    const rows = [columns.map(f => f.name), ...records.map((record, row) => columns.map(f => {
+      const text = safe(record[f.id]);
+      if (text.length <= 32767) return text;
+      const chars = Array.from(text);
+      for (let start = 0; start < chars.length; start += 15000) overflow.push([row + 1, f.name, start / 15000 + 1, chars.slice(start, start + 15000).join('')]);
+      return chars.slice(0, 15000).join('') + '\n【完整内容见长文本表】';
+    }))];
+    const tabs = [{name:'采集结果', rows}];
+    if (overflow.length > 1) tabs.push({name:'长文本', rows:overflow});
+    if (errors.length) tabs.push({name:'采集异常', rows:[['页面','原因'], ...errors.map(e => [e.url || '', e.message || String(e)])]});
+    const files = {
+      '[Content_Types].xml': declaration + `<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>${tabs.map((_,i)=>`<Override PartName="/xl/worksheets/sheet${i+1}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`).join('')}</Types>`,
+      '_rels/.rels': declaration + '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>',
+      'xl/workbook.xml': declaration + `<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets>${tabs.map((t,i)=>`<sheet name="${xml(t.name)}" sheetId="${i+1}" r:id="rId${i+1}"/>`).join('')}</sheets></workbook>`,
+      'xl/_rels/workbook.xml.rels': declaration + `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${tabs.map((_,i)=>`<Relationship Id="rId${i+1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${i+1}.xml"/>`).join('')}<Relationship Id="styles" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>`,
+      'xl/styles.xml': declaration + '<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><fonts count="2"><font><sz val="11"/><name val="等线"/></font><font><b/><sz val="11"/><color rgb="FFFFFFFF"/></font></fonts><fills count="3"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FF176B67"/></patternFill></fill></fills><borders count="1"><border/></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="3"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0" applyAlignment="1"><alignment vertical="top" wrapText="1"/></xf><xf numFmtId="0" fontId="1" fillId="2" borderId="0" xfId="0"/></cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>'
+    };
+    tabs.forEach((tab,i) => {files[`xl/worksheets/sheet${i+1}.xml`] = sheet(tab.rows);});
+    return zip(files);
+  }
+  globalThis.VisualXlsx = {createWorkbook};
+})();
+
+</script><script>
+"use strict";
+(() => {
+  const DEFAULT=()=>({version:1,id:crypto.randomUUID(),name:'我的采集模板',match:{origin:''},listSelector:'',fields:[],keyFields:[],detail:{clickSelector:'',identityField:'',identitySelector:'',identityType:'text',waitField:'',allowSame:false},pagination:{mode:'none',selector:''},options:{count:20,delay:1500,timeout:15000,maxPages:30,dropEmpty:true}});
+  function create({element,api,storage,demo=false}) {
+    let config=DEFAULT(), context=null, templates={}, latest=null, busy=false, startedHere=false;
+    element.className='studio';
+    element.innerHTML=`<div class="top"><div class="mark">V</div><div><h1>网页采集工作台</h1><span class="tag">${demo?'离线演示 · 示例数据':'独立试用版 · 配置驱动'}</span></div></div>
+      <p class="hint">鼠标点选网页，建立自己的采集模板。</p>
+      <div class="quickbar"><button id="quick-preview">预览</button><button id="quick-start" class="primary">开始采集</button><button id="quick-stop">暂停</button><button id="quick-export">导出</button><span id="quick-progress" class="hint"></span></div>
+      <div id="notice" role="status">正在连接当前网页…</div><p id="source" class="source"></p>
+      <div class="buttons"><button id="connect">连接当前网页</button><button id="example" ${demo?'':'hidden'}>填入演示模板</button><a class="demo-link" href="demo.html" target="_blank" ${demo?'hidden':''}>先看离线演示 ↗</a></div>
+      <section class="card"><div class="cardhead"><h2>模板</h2><button id="new">新建</button></div>
+      <select id="templates"><option value="">选择已保存模板</option></select><label>模板名称<input id="name" maxlength="80"></label><p id="template-host" class="hint"></p><button id="bind">绑定当前网站</button>
+      <div class="buttons"><button id="save">保存到本机</button><button id="json">导出模板</button><button id="import">导入模板</button><button id="delete-template" class="danger">删除模板</button></div><input id="file" type="file" accept="application/json,.json" hidden></section>
+      <section class="card"><div class="cardhead"><h2><span class="step">1</span>选择列表</h2><button id="pick-list">点选一整条记录</button></div>
+      <p class="hint">移到一条完整记录上，按 ↑ 可扩大选择，点击确认；Esc 取消。</p><p id="list-summary" class="selector">尚未选择</p>
+      <details><summary>手动调整列表定位规则</summary><input id="list-selector" placeholder="CSS 定位规则"></details></section>
+      <section class="card"><div class="cardhead"><h2><span class="step">2</span>定义字段</h2><button id="add">＋ 添加字段</button></div><div id="fields"></div>
+      <div id="detail" hidden><h2>同页详情设置</h2><p class="hint">先手动展开一条详情，再点选详情字段。新标签页详情暂不支持。</p>
+      <div class="buttons"><button id="pick-click">点选打开详情的位置</button><button id="pick-identity">点选详情中的标识</button></div>
+      <p class="hint">列表中哪一列，应与详情标识相同？</p><select id="identity-field"></select>
+      <label>详情标识读取方式<select id="identity-type"><option value="text">文字</option><option value="href">链接</option></select></label>
+      <label>等待哪一详情字段更新<select id="wait-field"></select></label>
+      <label><input id="same-detail" type="checkbox"> 允许不同记录的详情正文完全相同</label>
+      <details><summary>查看详情定位规则</summary><label>点击位置<input id="click-selector"></label><label>详情标识<input id="identity-selector"></label></details></div></section>
+      <section class="card"><h2><span class="step">3</span>翻页与采集数量</h2>
+      <label>翻页方式<select id="mode"><option value="none">只读当前列表</option><option value="next">点击下一页</option><option value="load">点击加载更多</option><option value="scroll">滚动加载</option></select></label>
+      <div id="next-block" hidden><button id="pick-next">点选翻页按钮</button><input id="next-selector" placeholder="翻页按钮定位规则"></div>
+      <div class="numberrow"><label>目标条数<input id="count" type="number" min="1" max="10000"></label><label>每条间隔（秒）<input id="delay" type="number" min="0.5" max="60" step="0.5"></label></div>
+      <details><summary>等待、去重及导出设置</summary><div class="numberrow"><label>等待超时（秒）<input id="timeout" type="number" min="1" max="60"></label><label>最多列表页<input id="pages" type="number" min="1" max="500"></label></div><label><input id="drop" type="checkbox"> 自动删除全空列</label><label><input id="auto-export" type="checkbox" checked> 采集结束后自动导出 Excel</label><p class="hint">可在字段卡片勾选“用于去重”；不选时优先使用链接，否则使用整条列表文字。</p></details></section>
+      <section class="card"><h2><span class="step">4</span>预览与运行</h2><div class="buttons"><button id="preview">预览前5条</button><button id="start" class="primary">开始 / 继续</button><button id="stop">暂停</button><button id="cancel">取消点选</button></div>
+      <div class="metrics"><p id="progress">尚未运行</p><span id="state" class="tag">待配置</span></div><p id="run-message" class="hint"></p>
+      <div class="buttons"><button id="excel">导出已有结果</button><button id="clear" class="danger">清空结果</button></div><div id="preview-table"></div><div id="detail-preview" class="sample" hidden></div></section>
+      <p class="footer">模板和结果只保存在本机。点选只定位页面元素，不读取密码或Cookie、不绕过访问验证。试用版支持列表/表格及同页详情。</p>`;
+    const $=id=>element.querySelector('#'+id);
+    const notify=(message,error=false)=>{$('notice').textContent=message;$('notice').classList.toggle('error',error);};
+    const safe=fn=>async(...args)=>{try{return await fn(...args);}catch(error){notify(error.message,true);}};
+    function download(data,name,type){const url=URL.createObjectURL(new Blob([data],{type}));const a=document.createElement('a');a.href=url;a.download=name;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),60000);}
+    function table(records,fields){
+      $('preview-table').replaceChildren();
+      if(!records.length){$('preview-table').textContent='暂无记录。';return;}
+      const wrap=document.createElement('div');wrap.className='tablewrap';const tab=document.createElement('table'),head=document.createElement('tr');
+      for(const f of fields){const th=document.createElement('th');th.textContent=f.name;head.append(th);}tab.append(head);
+      for(const r of records.slice(0,5)){const tr=document.createElement('tr');for(const f of fields){const td=document.createElement('td');td.textContent=r[f.id] || (f.scope==='detail'?'运行时逐条读取':'—');tr.append(td);}tab.append(tr);}
+      wrap.append(tab);$('preview-table').append(wrap);
+    }
+    function readForm(){
+      config.name=$('name').value.trim();config.listSelector=$('list-selector').value.trim();
+      config.options={count:Number($('count').value),delay:Number($('delay').value)*1000,timeout:Number($('timeout').value)*1000,maxPages:Number($('pages').value),dropEmpty:$('drop').checked};
+      config.pagination={mode:$('mode').value,selector:$('next-selector').value.trim()};
+      config.detail={clickSelector:$('click-selector').value.trim(),identitySelector:$('identity-selector').value.trim(),identityField:$('identity-field').value,identityType:$('identity-type').value,waitField:$('wait-field').value,allowSame:$('same-detail').checked};
+      return structuredClone(config);
+    }
+    function refreshFields(reset=false){
+      $('fields').replaceChildren();
+      for(const f of config.fields){
+        const card=document.createElement('div');card.className='field';card.dataset.fieldId=f.id;
+        card.innerHTML='<div class="row"><input class="fieldname" placeholder="字段名称"><button class="pick fixed">点选</button><button class="remove fixed" title="删除字段">×</button></div><div class="field-grid"><select class="scope"><option value="list">列表内字段</option><option value="detail">详情区字段</option></select><select class="type"><option value="text">文字</option><option value="href">链接地址</option><option value="src">图片地址</option></select></div><label class="hint"><input class="key" type="checkbox"> 用于去重</label><details><summary>定位规则</summary><input class="rule"></details><p class="selector"></p>';
+        card.querySelector('.fieldname').value=f.name;card.querySelector('.scope').value=f.scope;card.querySelector('.type').value=f.type;card.querySelector('.rule').value=f.selector;card.querySelector('p').textContent=f.selector || '尚未点选';card.querySelector('.key').checked=config.keyFields.includes(f.id);
+        card.querySelector('.fieldname').oninput=e=>{f.name=e.target.value;identityOptions();};
+        card.querySelector('.scope').onchange=e=>{f.scope=e.target.value;if(f.scope==='detail')config.keyFields=config.keyFields.filter(id=>id!==f.id);refreshFields();};
+        card.querySelector('.type').onchange=e=>{f.type=e.target.value;};
+        card.querySelector('.rule').oninput=e=>{f.selector=e.target.value;card.querySelector('p').textContent=f.selector;};
+        card.querySelector('.key').onchange=e=>{config.keyFields=config.keyFields.filter(id=>id!==f.id);if(e.target.checked)config.keyFields.push(f.id);};
+        card.querySelector('.key').disabled=f.scope!=='list';
+        card.querySelector('.remove').onclick=()=>{config.fields=config.fields.filter(x=>x.id!==f.id);config.keyFields=config.keyFields.filter(id=>id!==f.id);refreshFields();};
+        card.querySelector('.pick').onclick=safe(async()=>{readForm();const selected=await pick(f.scope==='list'?'field-list':'field-detail');if(selected){f.selector=selected.selector;refreshFields();notify(`已选择“${f.name}”：${selected.sample}`);}});
+        $('fields').append(card);
+      }
+      $('detail').hidden=!config.fields.some(f=>f.scope==='detail');identityOptions(reset);
+    }
+    function identityOptions(reset=false){
+      const selected=reset?config.detail?.identityField:($('identity-field').value || config.detail?.identityField);
+      const waited=reset?config.detail?.waitField:($('wait-field').value || config.detail?.waitField);
+      for(const [id,scope]of[['identity-field','list'],['wait-field','detail']]){
+        $(id).replaceChildren();for(const f of config.fields.filter(f=>f.scope===scope)){const opt=document.createElement('option');opt.value=f.id;opt.textContent=f.name;$(id).append(opt);}
+      }
+      if(selected && config.fields.some(f=>f.id===selected))$('identity-field').value=selected;
+      if(waited && config.fields.some(f=>f.id===waited))$('wait-field').value=waited;
+    }
+    function form(){
+      $('template-host').textContent='适用网站：'+(config.match?.origin || '尚未绑定');
+      $('name').value=config.name;$('list-selector').value=config.listSelector;$('list-summary').textContent=config.listSelector || '尚未选择';
+      $('mode').value=config.pagination.mode;$('next-selector').value=config.pagination.selector || '';$('next-block').hidden=!['next','load'].includes(config.pagination.mode);
+      $('count').value=config.options.count;$('delay').value=config.options.delay/1000;$('timeout').value=config.options.timeout/1000;$('pages').value=config.options.maxPages;$('drop').checked=config.options.dropEmpty!==false;
+      $('click-selector').value=config.detail?.clickSelector || '';$('identity-selector').value=config.detail?.identitySelector || '';$('identity-type').value=config.detail?.identityType || 'text';$('same-detail').checked=!!config.detail?.allowSame;
+      refreshFields(true);
+    }
+    async function pick(kind){
+      if(busy)throw new Error('请先完成或取消上一次点选。');busy=true;
+      notify('请在左侧目标网页移动鼠标并点击；↑扩大选择，Esc取消。');
+      try{return await api('pick',{kind,listSelector:config.listSelector});}finally{busy=false;}
+    }
+    async function connect(){context=await api('context');$('source').textContent=context.title+' · '+context.url;$('source').title=context.url;if(!config.match.origin)config.match.origin=new URL(context.url).origin;$('template-host').textContent='适用网站：'+(config.match.origin || '尚未绑定');notify(demo?'演示页已连接。可以手动点选，或先填入演示模板。':'已连接。点“选择列表”开始，先预览再运行。');}
+    async function save(){readForm();VisualEngine.validate(config);templates[config.id]=structuredClone(config);await storage.set(templates);templateOptions();$('templates').value=config.id;notify('模板已保存在本机。');}
+    function templateOptions(){$('templates').replaceChildren(new Option('选择已保存模板',''));for(const c of Object.values(templates))$('templates').append(new Option(c.name,c.id));}
+    function exportResult(){if(!latest?.records.length)throw new Error('还没有结果，请先预览并运行。');const c=latest.config,selected=latest.records.slice(0,c.options.count);const bytes=VisualXlsx.createWorkbook(selected,c.fields,{dropEmpty:c.options.dropEmpty,errors:latest.errors});download(bytes,c.name.replace(/[\\/:*?"<>|]/g,'_')+'_'+selected.length+'条.xlsx','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');}
+    async function update(){
+      if(busy)return;
+      try{latest=await api('state');$('progress').textContent=`${latest.records.length} / ${latest.config?.options.count || config.options.count} 条`;$('quick-progress').textContent=$('progress').textContent;$('state').textContent=({idle:'待配置',running:'运行中',paused:'已暂停',done:'已结束'})[latest.status] || latest.status;$('run-message').textContent=latest.message;$('stop').disabled=!latest.running;$('quick-stop').disabled=!latest.running;$('quick-start').disabled=latest.running;$('start').disabled=latest.running;
+        if(latest.records.length)table(latest.records,latest.config.fields);
+        if(startedHere && !latest.running && ['done','paused'].includes(latest.status)){
+          startedHere=false;if(latest.records.length && $('auto-export').checked)exportResult();
+          if(latest.status==='paused')notify(latest.message,true);
+        }
+      }catch(error){$('run-message').textContent=error.message;}
+    }
+    $('connect').onclick=safe(connect);
+    $('bind').onclick=safe(async()=>{await connect();config.match.origin=new URL(context.url).origin;$('template-host').textContent='适用网站：'+config.match.origin;notify('已绑定当前网站，请重新预览或点选需要调整的字段。');});
+    $('pick-list').onclick=safe(async()=>{const data=await pick('list');config.listSelector=data.selector;$('list-selector').value=data.selector;$('list-summary').textContent=`匹配 ${data.count} 条 · ${data.selector}`;notify(`已识别 ${data.count} 条记录，接下来添加字段。`);});
+    $('add').onclick=()=>{readForm();config.fields.push({id:crypto.randomUUID(),name:'字段'+(config.fields.length+1),scope:'list',type:'text',selector:''});refreshFields();};
+    $('mode').onchange=()=>{$('next-block').hidden=!['next','load'].includes($('mode').value);};
+    $('pick-next').onclick=safe(async()=>{const result=await pick('next');$('next-selector').value=result.selector;notify('已选择翻页按钮。');});
+    $('pick-click').onclick=safe(async()=>{const result=await pick('detail-click');$('click-selector').value=result.selector;notify('已选择详情点击位置。');});
+    $('pick-identity').onclick=safe(async()=>{const result=await pick('identity');$('identity-selector').value=result.selector;notify('已选择详情标识：'+result.sample);});
+    $('preview').onclick=safe(async()=>{const c=readForm(),result=await api('preview',c);table(result.records,c.fields);const details=c.fields.filter(f=>f.scope==='detail');$('detail-preview').hidden=!details.length;$('detail-preview').textContent='当前详情单独预览（未与每条列表关联）：\n'+details.map(f=>f.name+'：'+(result.detail[f.id] || '—')).join('\n');notify(`列表匹配 ${result.count} 条，显示前5条。`+(result.warnings.length?'\n'+result.warnings.join('\n'):''),!!result.warnings.length);});
+    $('start').onclick=safe(async()=>{readForm();VisualEngine.validate(config);latest=await api('start',structuredClone(config));startedHere=true;notify('采集已开始，可暂停或导出。');await update();});
+    $('stop').onclick=safe(async()=>{latest=await api('stop');startedHere=false;await update();});
+    $('cancel').onclick=safe(async()=>{await api('cancelPick');notify('点选已取消。');});
+    $('clear').onclick=safe(async()=>{if(latest?.records.length && !confirm('清空本次采集结果？已保存的模板不会删除。'))return;latest=await api('clear');$('preview-table').replaceChildren();await update();});
+    $('excel').onclick=safe(async()=>{latest=await api('state');exportResult();});
+    $('save').onclick=safe(save);
+    $('new').onclick=()=>{config=DEFAULT();if(context)config.match.origin=new URL(context.url).origin;form();$('templates').value='';notify('已新建空模板；已有采集结果未删除。');};
+    $('templates').onchange=()=>{if(templates[$('templates').value]){config=structuredClone(templates[$('templates').value]);form();notify('模板已加载，请先预览确认定位。');}};
+    $('json').onclick=safe(()=>{readForm();VisualEngine.validate(config);download(JSON.stringify(config,null,2),config.name+'.json','application/json');});
+    $('import').onclick=()=>{$('file').click();};
+    $('file').onchange=safe(async()=>{const file=$('file').files[0];if(!file)return;if(file.size>200000)throw new Error('模板文件过大。');const parsed=JSON.parse(await file.text());config=VisualEngine.validate(parsed);form();notify('已导入模板，点预览检查后可保存。');$('file').value='';});
+    $('delete-template').onclick=safe(async()=>{if(!templates[config.id])throw new Error('当前模板尚未保存。');if(!confirm('删除本机保存的这个模板？采集结果保留。'))return;delete templates[config.id];await storage.set(templates);templateOptions();notify('模板已删除。');});
+    $('example').onclick=safe(async()=>{config=await api('example');form();notify('已填入演示模板。点“预览前5条”，再点开始。你也可以重新点选修改。');});
+    for(const [quick,target]of[['quick-preview','preview'],['quick-start','start'],['quick-stop','stop'],['quick-export','excel']])$(quick).onclick=()=>$(target).click();
+    form();
+    const ready=(async()=>{templates=await storage.get() || {};templateOptions();await connect();await update();})().catch(error=>notify(error.message,true));
+    const timer=setInterval(update,1000);
+    return {ready,dispose:()=>clearInterval(timer),getConfig:readForm,loadConfig:c=>{config=structuredClone(c);form();}};
+  }
+  globalThis.VisualStudio={create,defaults:DEFAULT};
+})();
+
+</script><script>
+"use strict";
+(() => {
+  const rows=Array.from({length:24},(_,i)=>({id:i+1,name:'演示岗位 '+String(i+1).padStart(2,'0'),salary:(8+i%5)+'–'+(12+i%5)+'K',company:'示例公司 '+String.fromCharCode(65+i%5),education:i%2?'本科':'大专'}));
+  let page=0, mode='cards', selected=1;
+  function detail(id){
+    selected=id;const data=rows[id-1];
+    document.querySelectorAll('.record').forEach(el=>el.classList.toggle('active',Number(el.dataset.id)===id));
+    document.querySelector('#detail-title').textContent=data.name;
+    setTimeout(()=>{
+      document.querySelector('#detail-description').textContent=`示例编号 ${id}\n整理数据、生成报告，并跟进日常业务。\n此内容仅用于演示网页采集。`;
+      document.querySelector('#detail-requirements').textContent=`${data.education}，具备沟通能力。\n示例要求 ${id}：熟悉常用办公工具。`;
+    },180);
+  }
+  function render(){
+    const container=document.querySelector('#records');container.replaceChildren();
+    const list=mode==='table'?document.createElement('table'):document.createElement('div');
+    if(mode==='table')list.className='demo-table';
+    const body=mode==='table'?document.createElement('tbody'):list;
+    if(mode==='table')list.append(body);
+    for(const data of rows.slice(page*6,page*6+6)){
+      const row=document.createElement(mode==='table'?'tr':'article');row.className='record';row.dataset.id=data.id;
+      if(mode==='table')row.innerHTML='<td><h3 class="name"></h3><span class="company"></span><small class="education"></small></td><td><span class="salary"></span><br><button class="open-detail">查看详情</button><a class="detail-link">职位链接</a></td>';
+      else row.innerHTML='<div class="row"><h3 class="name"></h3><span class="salary fixed"></span></div><span class="company"></span><small class="education"></small><small>经验不限</small><div><button class="open-detail">查看详情</button><a class="detail-link">职位链接</a></div>';
+      for(const key of ['name','salary','company','education'])row.querySelector('.'+key).textContent=data[key];
+      row.querySelector('a').href='https://example.com/jobs/demo-'+data.id;
+      row.querySelector('a').onclick=event=>{event.preventDefault();detail(data.id);};
+      row.querySelector('.open-detail').onclick=()=>detail(data.id);
+      body.append(row);
+    }
+    container.append(list);document.querySelector('#page-indicator').textContent=`第 ${page+1}/4 页 · 共24条`;
+    document.querySelector('#next').disabled=page===3;
+    detail(page*6+1);
+  }
+  document.querySelector('#next').onclick=()=>{if(page<3){page++;render();}};
+  document.querySelector('#view-cards').onclick=()=>{mode='cards';render();};
+  document.querySelector('#view-table').onclick=()=>{mode='table';render();};
+  document.querySelector('#reset-page').onclick=()=>{page=0;render();};
+  render();
+  const engine=VisualEngine.create({root:document.querySelector('#demo-page'),onUpdate:async data=>localStorage.setItem('vpc.demo.session',JSON.stringify(data))});
+  const example=()=>({version:1,id:'demo-template',name:'示例职位采集',match:{origin:new URL(location.href).origin},listSelector:'#records .record',fields:[
+    {id:'name',name:'岗位名称',scope:'list',type:'text',selector:'.name'},
+    {id:'salary',name:'薪资',scope:'list',type:'text',selector:'.salary'},
+    {id:'company',name:'公司',scope:'list',type:'text',selector:'.company'},
+    {id:'url',name:'职位链接',scope:'list',type:'href',selector:'.detail-link'},
+    {id:'description',name:'描述',scope:'detail',type:'text',selector:'#detail-description'},
+    {id:'requirements',name:'要求',scope:'detail',type:'text',selector:'#detail-requirements'}
+  ],keyFields:['url'],detail:{clickSelector:'.open-detail',identityField:'name',identitySelector:'#detail-title',identityType:'text',waitField:'description',allowSame:false},pagination:{mode:'next',selector:'#next'},options:{count:12,delay:700,timeout:8000,maxPages:4,dropEmpty:true}});
+  const api=async(action,payload)=>{
+    if(action==='context')return {url:location.href,title:'离线演示网页'};
+    if(action==='state')return engine.snapshot();
+    if(action==='example')return example();
+    if(action==='pick')return engine.pick(payload);
+    if(action==='cancelPick'){engine.cancelPick();return {};}
+    if(action==='preview')return engine.preview(payload);
+    if(action==='start')return engine.start(payload);
+    if(action==='stop')return engine.stop();
+    if(action==='clear')return engine.clear();
+    throw new Error('未知操作');
+  };
+  const studio=VisualStudio.create({element:document.querySelector('#app'),api,demo:true,storage:{get:async()=>JSON.parse(localStorage.getItem('vpc.demo.templates') || '{}'),set:async data=>localStorage.setItem('vpc.demo.templates',JSON.stringify(data))}});
+  globalThis.VisualDemo={engine,studio,example,render,get page(){return page;}};
+})();
+
+</script></body></html>
