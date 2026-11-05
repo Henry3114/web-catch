@@ -33,6 +33,8 @@
       if(!initialized)throw new Error('工作台尚未连接当前网页。');
       if(request.action==='context')return {url:location.href,title:document.title};
       if(request.action==='state')return engine.snapshot();
+      if(request.action==='suggest')return engine.suggest(request.payload);
+      if(request.action==='entry')return engine.entry(request.payload);
       if(request.action==='pick')return engine.pick(request.payload);
       if(request.action==='cancelPick'){engine.cancelPick();return {};}
       if(request.action==='preview')return engine.preview(request.payload);

@@ -1,9 +1,9 @@
 "use strict";
-importScripts('detail-reader.js','detail-manager.js');
+importScripts('detail-reader.js','detect.js','detail-manager.js');
 async function connect(tabId){
   const tab=await chrome.tabs.get(tabId);
   if(!/^https?:\/\//.test(tab.url || ''))throw new Error('请切到普通网页并点击工具栏图标；浏览器内部页面不允许采集。');
-  await chrome.scripting.executeScript({target:{tabId},files:['locator.js','engine.js','content.js']});
+  await chrome.scripting.executeScript({target:{tabId},files:['locator.js','detect.js','engine.js','content.js']});
   const all=await chrome.storage.local.get(null);
   let saved=all['vpc.session.'+tabId];
   const valid=data=>data && (data.source===tab.url || (data.pending && Date.now()-data.pending.at<60000 && data.pending.origin===new URL(tab.url).origin));
@@ -32,11 +32,21 @@ chrome.runtime.onMessage.addListener((message,sender,reply)=>{
     if(message.action==='stop')await VisualDetailManager.cancel(id);
     const tab=await connect(id);
     if(message.action==='context')return {tabId:id,url:tab.url,title:tab.title};
+    if(message.action==='autoDetail')return VisualDetailManager.prepare(id,message.payload);
+    if(message.action==='resolveEntry'){
+      const response=await chrome.tabs.sendMessage(id,{type:'VPC_CONTENT',action:'entry',payload:message.payload});
+      if(!response?.ok)throw new Error(response?.error || '请先识别列表。');
+      if(response.data.link)return {...response.data,url:response.data.link};
+      if(!message.payload.detail?.clickSelector)throw new Error('没有识别到职位入口。请点一次职位标题，或取消“同时读取职位详情”。');
+      const [result]=await chrome.scripting.executeScript({target:{tabId:id},world:'MAIN',func:VisualDetail.capture,args:[{rowSelector:response.data.rowSelector,clickSelector:message.payload.detail.clickSelector}]});
+      if(!result?.result?.ok)throw new Error(result?.result?.error || '没有找到详情链接。');
+      return {...response.data,url:result.result.url};
+    }
     if(message.action==='pick')await chrome.tabs.update(id,{active:true});
     const response=await chrome.tabs.sendMessage(id,{type:'VPC_CONTENT',action:message.action,payload:message.payload});
     if(!response?.ok)throw new Error(response?.error || '网页没有响应。');
     return response.data;
-  })().then(data=>reply({ok:true,data})).catch(error=>reply({ok:false,error:error.message}));
+  })().then(data=>reply({ok:true,data})).catch(error=>reply({ok:false,error:error.message,needsUser:!!error.needsUser}));
   return true;
 });
 chrome.tabs.onUpdated.addListener((id,info)=>{

@@ -1,9 +1,9 @@
 {
   "manifest_version": 3,
   "name": "网页采集工作台 · 独立试用版",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "minimum_chrome_version": "116",
-  "description": "鼠标点选列表及详情页字段，批量进入详情、翻页并导出Excel。独立于BOSS专用扩展。",
+  "description": "自动识别职位列表和详情，按提示补充点选，批量采集并导出Excel。保留高级配置，独立于BOSS专用扩展。",
   "permissions": ["activeTab", "scripting", "storage", "sidePanel"],
   "optional_host_permissions": ["https://*/*", "http://*/*"],
   "action": {"default_title": "打开网页采集工作台"},

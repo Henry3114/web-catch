@@ -51,6 +51,7 @@ class VisualCollectorTests(unittest.TestCase):
         self.page.on('pageerror', lambda error: self.errors.append(str(error)))
         self.page.goto(self.demo_url)
         self.page.evaluate('VisualDemo.studio.ready')
+        self.page.locator('#advanced-settings').evaluate('el=>el.open=true')
         self.page.wait_for_timeout(220)
         self.page.clock.install()
 
@@ -179,7 +180,7 @@ class VisualCollectorTests(unittest.TestCase):
         config = json.loads(Path(event.value.path()).read_text())
         self.assertEqual(config['name'], '我的模板')
         self.assertNotIn('records', config)
-        self.page.reload(); self.page.evaluate('VisualDemo.studio.ready')
+        self.page.reload(); self.page.evaluate('VisualDemo.studio.ready');self.page.locator('#advanced-settings').evaluate('el=>el.open=true')
         self.assertIn('我的模板', self.page.locator('#templates').inner_text())
         self.page.locator('#templates').select_option('demo-template')
         self.assertEqual(self.page.locator('#identity-field').input_value(), 'name')
@@ -361,6 +362,7 @@ class VisualCollectorTests(unittest.TestCase):
           await draftStudio.ready;
         }""")
         self.assertEqual(self.page.locator('#draft-area #detail-mode').input_value(),'page')
+        self.page.locator('#draft-area #advanced-settings').evaluate('el=>el.open=true')
         self.page.locator('#draft-area #name').fill('尚未配置完成的模板')
         self.page.locator('#draft-area #add').click()
         self.page.clock.fast_forward(300)
@@ -396,6 +398,89 @@ class VisualCollectorTests(unittest.TestCase):
         self.page.keyboard.press('Escape')
         self.assertEqual(self.page.locator('[data-vpc-ui]').count(),0)
         self.assertIn('取消',self.page.evaluate('pickFailure'))
+
+
+    def test_simple_mode_auto_detects_fields_and_collects_without_advanced_settings(self):
+        self.page.locator('#advanced-settings').evaluate('el=>el.open=false')
+        self.page.locator('#quick-details').uncheck()
+        self.page.locator('#guide-action').click()
+        self.page.wait_for_function("document.querySelector('#guide-action').textContent==='开始采集'")
+        self.assertIn('已识别 6 条',self.page.locator('#guide-summary').inner_text())
+        self.assertIn('职位名称',self.page.locator('#preview-table').inner_text())
+        self.assertFalse(self.page.locator('#advanced-settings').evaluate('el=>el.open'))
+        self.page.locator('#count').fill('3')
+        with self.page.expect_download():
+            self.page.locator('#guide-action').click()
+            self.tick("VisualDemo.engine.snapshot().status==='done'")
+        rows=self.page.evaluate('VisualDemo.engine.snapshot().records')
+        self.assertEqual(len(rows),3);self.assertEqual(len(set(r['auto-title'] for r in rows)),3)
+        self.assertEqual(self.page.evaluate('VisualDemo.studio.getConfig().pagination.mode'),'next')
+
+    def test_automatic_51job_list_detection_and_entry_fields(self):
+        self.page.evaluate("html=>document.querySelector('#demo-page').innerHTML=html",NESTED_JOBS)
+        result=self.page.evaluate('VisualDemo.engine.suggest(VisualStudio.defaults())')
+        self.assertEqual(result['count'],3)
+        self.assertEqual([r['auto-title'] for r in result['records']],['运营支持一','运营支持二','运营支持三'])
+        self.assertEqual([r['auto-salary'] for r in result['records']],['8千-1.3万','1-2万','18-25万/年'])
+        self.assertEqual(result['config']['detail']['clickSelector'],'span.jname.text-cut')
+
+    def test_automatic_detection_returns_clear_fallback_for_unknown_page(self):
+        self.page.evaluate("document.querySelector('#demo-page').innerHTML='<p>这里没有职位列表</p>'")
+        error=self.page.evaluate("()=>{try{VisualDemo.engine.suggest(VisualStudio.defaults());return ''}catch(e){return e.message}}")
+        self.assertIn('点一个职位标题',error)
+
+    def test_auto_detail_reader_finds_complete_visible_description(self):
+        detail=self.context.new_page()
+        detail.route('**/automatic-detail',lambda route:route.fulfill(content_type='text/html; charset=utf-8',body='<html><head><title>职位详情</title></head><body><h1>数据分析师</h1><div class="job-description">岗位职责：分析业务数据并制作报告，持续跟进业务指标。任职要求：熟悉SQL和Excel，能独立完成数据分析与沟通。</div></body></html>'))
+        detail.goto(f'http://localhost:{self.server.server_port}/automatic-detail')
+        detail.add_script_tag(path=str(ROOT/'extension/detect.js'))
+        result=detail.evaluate('VisualDetect.details({timeout:2000})')
+        self.assertTrue(result['ok']);self.assertIn('任职要求',result['data']['sample']['auto-description'])
+        self.assertEqual(result['data']['title'],'数据分析师');self.assertTrue(result['data']['fields'][0]['selector']);detail.close()
+
+    def test_guided_details_setup_automatically_saves_fields_without_opening_advanced(self):
+        self.page.evaluate("""async()=>{
+          VisualDemo.studio.dispose();document.querySelector('#app').replaceChildren();
+          let state={records:[],status:'idle',running:false,config:null,message:''};
+          window.guideCalls=[];window.guideSaved={};
+          window.simpleStudio=VisualStudio.create({element:document.querySelector('#app'),storage:{get:async()=>({}),set:async c=>{guideSaved=c;}},api:async(action,payload)=>{
+            guideCalls.push(action);
+            if(action==='context')return {title:'职位列表',url:location.href};
+            if(action==='state')return state;
+            if(action==='suggest')return VisualDemo.engine.suggest(payload);
+            if(action==='resolveEntry')return {url:'https://jobs.example/one',title:'演示岗位 01'};
+            if(action==='autoDetail')return {fields:[{id:'auto-description',name:'职位描述',scope:'detail',type:'text',selector:'.job-description'}],sample:{'auto-description':'这是自动读取的示例正文'},url:'https://jobs.example/one',title:'演示岗位 01',identitySelector:'h1'};
+          }});await simpleStudio.ready;
+        }""")
+        self.page.locator('#guide-action').click()
+        self.page.wait_for_function("document.querySelector('#guide-action').textContent==='自动读取详情'")
+        self.page.locator('#guide-action').click()
+        self.page.wait_for_function("document.querySelector('#guide-action').textContent==='开始采集'")
+        self.assertFalse(self.page.locator('#advanced-settings').evaluate('el=>el.open'))
+        self.assertIn('自动读取的示例正文',self.page.locator('#detail-preview').inner_text())
+        self.assertTrue(self.page.evaluate("Object.values(guideSaved).some(c=>c.fields.some(f=>f.scope==='detail'))"))
+        self.assertNotIn('pick',self.page.evaluate('guideCalls'))
+        self.page.evaluate('simpleStudio.dispose()')
+
+
+    def test_auto_detection_skips_unreadable_salary_and_warns(self):
+        self.page.evaluate("document.querySelectorAll('#records .salary').forEach(el=>el.textContent='\\uE123-\\uE124K')")
+        result=self.page.evaluate('VisualDemo.engine.suggest(VisualStudio.defaults())')
+        self.assertNotIn('auto-salary',[f['id'] for f in result['config']['fields']])
+        self.assertTrue(any('特殊字体' in w for w in result['warnings']))
+
+    def test_simple_mode_invalid_count_explains_and_focuses_input(self):
+        self.page.locator('#example').click();self.page.locator('#advanced-settings').evaluate('el=>el.open=false')
+        self.page.locator('#count').fill('0')
+        self.assertIn('先填写采集数量',self.page.locator('#guide-title').inner_text())
+        self.page.locator('#guide-action').click()
+        self.assertEqual(self.page.evaluate('document.activeElement.id'),'count')
+        self.assertIn('1至10000',self.page.locator('#guide-hint').inner_text())
+
+    def test_invalid_field_selector_uses_chinese_actionable_error(self):
+        message=self.page.evaluate("()=>{const c=VisualDemo.example();c.fields[0].selector='[';try{VisualEngine.validate(c);return ''}catch(e){return e.message}}")
+        self.assertIn('岗位名称',message);self.assertIn('重新点选',message)
+        self.assertNotIn('querySelector',message)
 
 
 if __name__=='__main__':

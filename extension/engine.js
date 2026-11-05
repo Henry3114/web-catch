@@ -7,6 +7,7 @@
   const visible = VisualLocator.visible;
   function validate(input) {
     const c = structuredClone(input);
+    const selectorValid=(selector,label)=>{try{document.createDocumentFragment().querySelector(selector);}catch{throw new Error(label+'的位置规则无效，请重新点选。');}};
     if (!c || c.version !== 1 || typeof c.name !== 'string' || !c.name.trim()) throw new Error('请填写模板名称。');
     const identifier=value=>typeof value==='string' && /^[\w-]{1,100}$/.test(value) && !['__proto__','constructor','prototype'].includes(value);
     if(!identifier(c.id))throw new Error('模板标识无效，请新建模板或修正导入文件。');
@@ -18,18 +19,18 @@
       names.add(f.name.trim()); ids.add(f.id);
       if (!['text','href','src'].includes(f.type) || !['list','detail'].includes(f.scope)) throw new Error('字段类型或读取区域无效。');
       if (!f.selector || f.selector.length > 1200) throw new Error(`请点选“${f.name}”的位置。`);
-      document.createDocumentFragment().querySelector(f.selector);
+      selectorValid(f.selector,'“'+f.name+'”');
     }
-    document.createDocumentFragment().querySelector(c.listSelector);
+    selectorValid(c.listSelector,'列表');
     c.options ||= {};
     for (const [key, fallback, min, max] of [['count',20,1,LIMIT],['delay',1500,500,60000],['timeout',15000,1000,60000],['maxPages',30,1,500]]) {
       c.options[key] = Number(c.options[key] ?? fallback);
-      if (!Number.isInteger(c.options[key]) || c.options[key] < min || c.options[key] > max) throw new Error(`${key} 设置超出范围（${min}–${max}）。`);
+      if (!Number.isInteger(c.options[key]) || c.options[key] < min || c.options[key] > max) throw new Error(({count:'采集数量请填写1至10000的整数。',delay:'每条间隔请填写0.5至60秒。',timeout:'等待超时请填写1至60秒。',maxPages:'最多列表页请填写1至500的整数。'})[key]);
     }
     c.pagination ||= {mode:'none', selector:''};
     if (!['none','next','load','scroll'].includes(c.pagination.mode)) throw new Error('翻页方式无效。');
     if (['next','load'].includes(c.pagination.mode) && !c.pagination.selector) throw new Error('请点选下一页或加载更多按钮。');
-    for (const selector of [c.pagination.selector, c.detail?.clickSelector, c.detail?.identitySelector]) if (selector) document.createDocumentFragment().querySelector(selector);
+    for (const selector of [c.pagination.selector, c.detail?.clickSelector, c.detail?.identitySelector]) if (selector) selectorValid(selector,'翻页或详情');
     c.detail ||= {};
     c.detail.mode ||= 'same';
     if (!['same','page'].includes(c.detail.mode)) throw new Error('详情模式无效。');
@@ -286,7 +287,13 @@
         document.addEventListener('mousemove',move,true);document.addEventListener('click',click,true);document.addEventListener('keydown',keyDown,true);
       });
     }
-    return {start,stop,clear,preview,repair,pick,snapshot,restore,sample:input=>detailValues(validate(input)),cancelPick:()=>cancelledPick?.()};
+    function suggest(input){if(running)throw new Error('请先暂停采集，再识别页面。');return VisualDetect.list(root,input,url());}
+    function entry(c){
+      const row=items(c)[0];if(!row)throw new Error('没有找到职位列表，请先点“自动识别页面”。');
+      const data=listValues(row,c);
+      return {link:data[c.detail?.linkField] || '',rowSelector:VisualLocator.unique(row,document),title:data['auto-title'] || data[c.detail?.identityField] || ''};
+    }
+    return {start,stop,clear,preview,repair,pick,snapshot,restore,suggest,entry,sample:input=>detailValues(validate(input)),cancelPick:()=>cancelledPick?.()};
   }
   globalThis.VisualEngine={create,validate};
 })();

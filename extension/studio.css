@@ -2,3 +2,6 @@
 :root .quickbar{position:sticky;top:0;z-index:8;display:flex;align-items:center;gap:6px;padding:8px 0;background:#f4f7f6;border-bottom:1px solid #dbe5de}.quickbar button{padding:7px 11px}.quickbar span{margin-left:auto;white-space:nowrap}#notice{position:relative}
 
 #notice{position:relative}
+.guide{border:1px solid #8dc3b3;background:#f9fffc}.guide h2{font-size:17px;margin:8px 0}.guide .hint{white-space:pre-wrap}.guide .numberrow{align-items:center}#advanced-settings>summary{padding:12px;border:1px solid #d9e5df;border-radius:8px;background:#fff}#guide-action{min-width:125px}#guide-summary{margin-top:10px}#advanced-settings[open]>summary{margin-bottom:8px}
+#detail-preview{max-height:180px}
+#advanced-settings:not([open]) + .results .manual-controls{display:none}

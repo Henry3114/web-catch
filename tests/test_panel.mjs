@@ -30,3 +30,7 @@ test('list tab cannot be bound as an independent detail sample',async()=>{
   const a=setup({activeId:10});await assert.rejects(a.app.api('detailContext',{current:true}),/这还是列表标签页/);
   assert.equal(a.data['vpc.bindings.7'],undefined);
 });
+test('automatic detail reading requests selected hosts in its click gesture',async()=>{
+  const a=setup();const promise=a.app.api('autoDetail',{config:{match:{origin:'https://list.test'},detail:{origin:'https://detail.test'}},url:'https://detail.test/job'});
+  assert.equal(a.calls[0][0],'permission');await promise;assert.equal(a.calls.at(-1)[1].tabId,10);
+});

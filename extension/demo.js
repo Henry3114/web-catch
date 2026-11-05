@@ -47,6 +47,9 @@
   ],keyFields:['url'],detail:{clickSelector:'.open-detail',identityField:'name',identitySelector:'#detail-title',identityType:'text',waitField:'description',allowSame:false},pagination:{mode:'next',selector:'#next'},options:{count:12,delay:700,timeout:8000,maxPages:4,dropEmpty:true}});
   const api=async(action,payload)=>{
     if(action==='context')return {url:location.href,title:'离线演示网页'};
+    if(action==='suggest')return engine.suggest(payload);
+    if(action==='resolveEntry')return {...engine.entry(payload),url:engine.entry(payload).link};
+    if(action==='autoDetail')throw new Error('跨页自动试读需要安装独立扩展。离线演示请使用“填入演示模板”，或取消“同时读取职位详情”。');
     if(action==='state')return engine.snapshot();
     if(action==='example')return example();
     if(action==='pick')return engine.pick(payload);

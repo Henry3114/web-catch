@@ -1,14 +1,16 @@
 "use strict";
 (() => {
-  const DEFAULT=()=>({version:1,id:crypto.randomUUID(),name:'我的采集模板',match:{origin:''},listSelector:'',fields:[],keyFields:[],detail:{mode:'same',origin:'',linkField:'',clickSelector:'',identityField:'',identitySelector:'',identityType:'text',waitField:'',allowSame:false},pagination:{mode:'none',selector:''},options:{count:20,delay:1500,timeout:15000,maxPages:30,dropEmpty:true}});
+  const DEFAULT=()=>({version:1,id:crypto.randomUUID(),name:'我的采集模板',quickDetails:true,match:{origin:''},listSelector:'',fields:[],keyFields:[],detail:{mode:'same',origin:'',linkField:'',clickSelector:'',identityField:'',identitySelector:'',identityType:'text',waitField:'',allowSame:false},pagination:{mode:'none',selector:''},options:{count:20,delay:1500,timeout:15000,maxPages:30,dropEmpty:true}});
   function create({element,api,storage,demo=false}) {
-    let config=DEFAULT(), context=null, templates={}, latest=null, busy=false, startedHere=false,pickingRole='list';
+    let config=DEFAULT(), context=null, templates={}, latest=null, busy=false, startedHere=false,pickingRole='list',guideWorking=false,autoSample=null,manualDetail=false;
     element.className='studio';
     element.innerHTML=`<div class="top"><div class="mark">V</div><div><h1>网页采集工作台</h1><span class="tag">${demo?'离线演示 · 示例数据':'独立试用版 · 配置驱动'}</span></div></div>
-      <p class="hint">鼠标点选网页，建立自己的采集模板。</p>
+      <p class="hint">先自动识别页面，再按提示补充点选。</p>
       <div class="quickbar"><button id="quick-preview">预览</button><button id="quick-start" class="primary">开始采集</button><button id="quick-stop">暂停</button><button id="quick-export">导出</button><span id="quick-progress" class="hint"></span></div>
       <div id="notice" role="status">正在连接当前网页…</div><p id="source" class="source"></p>
       <div class="buttons"><button id="connect">连接列表页</button><button id="example" ${demo?'':'hidden'}>填入演示模板</button><a class="demo-link" href="demo.html" target="_blank" ${demo?'hidden':''}>先看离线演示 ↗</a></div>
+      <section class="card guide"><span class="tag">简单模式</span><h2 id="guide-title">先连接职位列表</h2><p id="guide-hint" class="hint"></p><div class="numberrow"><label>采集数量<input id="count" type="number" min="1" max="10000" value="20"></label><label><input id="quick-details" type="checkbox" checked> 同时读取职位详情</label></div><div class="buttons"><button id="guide-action" class="primary">自动识别页面</button><button id="guide-pick-title">点一个职位标题</button><button id="guide-cancel" hidden>取消准备</button></div><p id="guide-summary" class="hint"></p></section>
+      <details id="advanced-settings"><summary>高级设置（字段、模板和翻页，可选）</summary>
       <section class="card"><div class="cardhead"><h2>模板</h2><button id="new">新建</button></div>
       <select id="templates"><option value="">选择已保存模板</option></select><label>模板名称<input id="name" maxlength="80"></label><p id="template-host" class="hint"></p><button id="bind">绑定当前网站</button>
       <div class="buttons"><button id="save">保存到本机</button><button id="json">导出模板</button><button id="import">导入模板</button><button id="delete-template" class="danger">删除模板</button></div><input id="file" type="file" accept="application/json,.json" hidden></section>
@@ -29,9 +31,9 @@
       <section class="card"><h2><span class="step">3</span>翻页与采集数量</h2>
       <label>翻页方式<select id="mode"><option value="none">只读当前列表</option><option value="next">点击下一页</option><option value="load">点击加载更多</option><option value="scroll">滚动加载</option></select></label>
       <div id="next-block" hidden><button id="pick-next">点选翻页按钮</button><input id="next-selector" placeholder="翻页按钮定位规则"></div>
-      <div class="numberrow"><label>目标条数<input id="count" type="number" min="1" max="10000"></label><label>每条间隔（秒）<input id="delay" type="number" min="0.5" max="60" step="0.5"></label></div>
+      <div class="numberrow"><label>每条间隔（秒）<input id="delay" type="number" min="0.5" max="60" step="0.5"></label></div>
       <details><summary>等待、去重及导出设置</summary><div class="numberrow"><label>等待超时（秒）<input id="timeout" type="number" min="1" max="60"></label><label>最多列表页<input id="pages" type="number" min="1" max="500"></label></div><label><input id="drop" type="checkbox"> 自动删除全空列</label><label><input id="auto-export" type="checkbox" checked> 采集结束后自动导出 Excel</label><p class="hint">可在字段卡片勾选“用于去重”；不选时优先使用链接，否则使用整条列表文字。</p></details></section>
-      <section class="card"><h2><span class="step">4</span>预览与运行</h2><div class="buttons"><button id="preview">预览前5条</button><button id="start" class="primary">开始 / 继续</button><button id="stop">暂停</button><button id="cancel">取消点选</button></div>
+      </details><section class="card results"><h2>预览与结果</h2><div class="buttons manual-controls"><button id="preview">预览前5条</button><button id="start" class="primary">开始 / 继续</button><button id="stop">暂停</button><button id="cancel">取消点选</button></div>
       <div class="metrics"><p id="progress">尚未运行</p><span id="state" class="tag">待配置</span></div><p id="run-message" class="hint"></p>
       <div class="buttons"><button id="excel">导出已有结果</button><button id="clear" class="danger">清空结果</button></div><div id="preview-table"></div><div id="detail-preview" class="sample" hidden></div></section>
       <p class="footer">模板和结果只保存在本机。点选只定位页面元素，不读取密码或Cookie、不绕过访问验证。支持列表/表格、同页详情和进入详情页批量采集。</p>`;
@@ -51,7 +53,8 @@
       config.name=$('name').value.trim();config.listSelector=$('list-selector').value.trim();
       config.options={count:Number($('count').value),delay:Number($('delay').value)*1000,timeout:Number($('timeout').value)*1000,maxPages:Number($('pages').value),dropEmpty:$('drop').checked};
       config.pagination={mode:$('mode').value,selector:$('next-selector').value.trim()};
-      config.detail={mode:$('detail-mode').value,origin:config.detail?.origin || '',linkField:$('link-field').value,clickSelector:$('click-selector').value.trim(),identitySelector:$('identity-selector').value.trim(),identityField:$('identity-field').value,identityType:$('identity-type').value,waitField:$('wait-field').value,allowSame:$('same-detail').checked};
+      config.quickDetails=$('quick-details').checked;
+      config.detail={...config.detail,mode:$('detail-mode').value,origin:config.detail?.origin || '',linkField:$('link-field').value,clickSelector:$('click-selector').value.trim(),identitySelector:$('identity-selector').value.trim(),identityField:$('identity-field').value,identityType:$('identity-type').value,waitField:$('wait-field').value,allowSame:$('same-detail').checked};
       return structuredClone(config);
     }
     function refreshFields(reset=false){
@@ -70,7 +73,7 @@
         card.querySelector('.pick').onclick=safe(async()=>{readForm();const selected=await pick(f.scope==='list'?'field-list':'field-detail');if(selected){f.selector=selected.selector;refreshFields();notify(`已选择“${f.name}”：${selected.sample}`);}});
         $('fields').append(card);
       }
-      $('detail').hidden=!config.fields.some(f=>f.scope==='detail');identityOptions(reset);persistDraft();
+      $('detail').hidden=!config.fields.some(f=>f.scope==='detail');identityOptions(reset);persistDraft();renderGuide();
     }
     function identityOptions(reset=false){
       const linked=reset?config.detail?.linkField:($('link-field').value || config.detail?.linkField);
@@ -87,6 +90,7 @@
     }
     function form(){
       $('template-host').textContent='适用网站：'+(config.match?.origin || '尚未绑定');
+      $('quick-details').checked=config.quickDetails ?? config.fields.some(f=>f.scope==='detail');
       $('name').value=config.name;$('list-selector').value=config.listSelector;$('list-summary').textContent=config.listSelector || '尚未选择';
       $('mode').value=config.pagination.mode;$('next-selector').value=config.pagination.selector || '';$('next-block').hidden=!['next','load'].includes(config.pagination.mode);
       $('count').value=config.options.count;$('delay').value=config.options.delay/1000;$('timeout').value=config.options.timeout/1000;$('pages').value=config.options.maxPages;$('drop').checked=config.options.dropEmpty!==false;
@@ -105,13 +109,13 @@
         return result;
       }finally{busy=false;pickingRole='list';}
     }
-    async function connect(current=false){context=await api('context',{current:current===true});$('source').textContent=context.title+' · '+context.url;$('source').title=context.url;if(!config.match.origin)config.match.origin=new URL(context.url).origin;$('template-host').textContent='适用网站：'+(config.match.origin || '尚未绑定');notify(demo?'演示页已连接。可以手动点选，或先填入演示模板。':'已连接。点“选择列表”开始，先预览再运行。');}
+    async function connect(current=false){context=await api('context',{current:current===true});$('source').textContent=context.title+' · '+context.url;$('source').title=context.url;if(!config.match.origin)config.match.origin=new URL(context.url).origin;$('template-host').textContent='适用网站：'+(config.match.origin || '尚未绑定');renderGuide();notify(demo?'演示页已连接。可以手动点选，或先填入演示模板。':'已连接。点“选择列表”开始，先预览再运行。');}
     async function save(){readForm();VisualEngine.validate(config);templates[config.id]=structuredClone(config);await storage.set(templates);templateOptions();$('templates').value=config.id;notify('模板已保存在本机。');}
     function templateOptions(){$('templates').replaceChildren(new Option('选择已保存模板',''));for(const c of Object.values(templates))$('templates').append(new Option(c.name,c.id));}
     function exportResult(){if(!latest?.records.length)throw new Error('还没有结果，请先预览并运行。');const c=latest.config,selected=latest.records.slice(0,c.options.count);const bytes=VisualXlsx.createWorkbook(selected,c.fields,{dropEmpty:c.options.dropEmpty,errors:latest.errors});download(bytes,c.name.replace(/[\\/:*?"<>|]/g,'_')+'_'+selected.length+'条.xlsx','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');}
     async function update(){
-      if(busy)return;
-      try{latest=await api('state');$('progress').textContent=`${latest.records.length} / ${latest.config?.options.count || config.options.count} 条`;$('quick-progress').textContent=$('progress').textContent;$('state').textContent=({idle:'待配置',running:'运行中',paused:'已暂停',done:'已结束'})[latest.status] || latest.status;$('run-message').textContent=latest.message;$('stop').disabled=!latest.running;$('quick-stop').disabled=!latest.running;$('quick-start').disabled=latest.running;$('start').disabled=latest.running;
+      if(busy || guideWorking)return;
+      try{latest=await api('state');$('progress').textContent=`${latest.records.length} / ${latest.config?.options.count || config.options.count} 条`;$('quick-progress').textContent=$('progress').textContent;$('state').textContent=({idle:'待配置',running:'运行中',paused:'已暂停',done:'已结束'})[latest.status] || latest.status;$('run-message').textContent=latest.status==='idle' && config.listSelector && config.fields.length?'配置已准备好，预览正确后点击开始采集。':latest.message;$('stop').disabled=!latest.running;$('quick-stop').disabled=!latest.running;$('quick-start').disabled=latest.running;renderGuide();if(latest.status==='idle' && guideStep().action==='run')$('state').textContent='已准备';$('start').disabled=latest.running;
         if(latest.records.length)table(latest.records,latest.config.fields);
         if(startedHere && !latest.running && ['done','paused'].includes(latest.status)){
           startedHere=false;if(latest.records.length && $('auto-export').checked)exportResult();
@@ -130,8 +134,8 @@
     $('pick-next').onclick=safe(async()=>{const result=await pick('next');$('next-selector').value=result.selector;notify('已选择翻页按钮。');});
     $('pick-click').onclick=safe(async()=>{const result=await pick('detail-click');$('click-selector').value=result.selector;notify(result.autoList?`已锁定职位标题，并自动识别 ${result.count} 条记录。请预览确认列表字段。`:'已锁定详情点击位置。');});
     $('pick-identity').onclick=safe(async()=>{const result=await pick('identity');$('identity-selector').value=result.selector;notify('已选择详情标识：'+result.sample);});
-    $('preview').onclick=safe(async()=>{const c=readForm(),result=await api('preview',c);table(result.records,c.fields);if(c.detail.mode==='page')result.detail=await api('sample',{config:c,role:'detail'});const details=c.fields.filter(f=>f.scope==='detail');$('detail-preview').hidden=!details.length;$('detail-preview').textContent='当前详情单独预览（未与每条列表关联）：\n'+details.map(f=>f.name+'：'+(result.detail[f.id] || '—')).join('\n');notify(`列表匹配 ${result.count} 条，显示前5条。`+(result.warnings.length?'\n'+result.warnings.join('\n'):''),!!result.warnings.length);});
-    $('start').onclick=safe(async()=>{readForm();VisualEngine.validate(config);latest=await api('start',structuredClone(config));startedHere=true;notify('采集已开始，可暂停或导出。');await update();});
+    $('preview').onclick=safe(async()=>{const c=readForm(),result=await api('preview',c);table(result.records,c.fields);if(c.detail.mode==='page' && c.fields.some(f=>f.scope==='detail')){if(autoSample)result.detail=autoSample;else try{result.detail=await api('sample',{config:c,role:'detail'});}catch{result.warnings.push('详情样例未连接；已保存的详情规则将在运行时逐条读取。');}}const details=c.fields.filter(f=>f.scope==='detail');$('detail-preview').hidden=!details.length;$('detail-preview').textContent='当前详情单独预览（未与每条列表关联）：\n'+details.map(f=>f.name+'：'+(result.detail[f.id] || '—')).join('\n');notify(`列表匹配 ${result.count} 条，显示前5条。`+(result.warnings.length?'\n'+result.warnings.join('\n'):''),!!result.warnings.length);});
+    $('start').onclick=safe(async()=>{if(!$('advanced-settings').open && guideStep().action!=='run'){await guideAction();return;}readForm();VisualEngine.validate(config);latest=await api('start',structuredClone(config));startedHere=true;notify('采集已开始，可暂停或导出。');await update();});
     $('stop').onclick=safe(async()=>{latest=await api('stop');startedHere=false;await update();});
     $('cancel').onclick=safe(async()=>{await api('cancelPick',{role:pickingRole});notify('点选已取消。');});
     $('clear').onclick=safe(async()=>{if(latest?.records.length && !confirm('清空本次采集结果？已保存的模板不会删除。'))return;latest=await api('clear');$('preview-table').replaceChildren();await update();});
@@ -144,11 +148,73 @@
     $('file').onchange=safe(async()=>{const file=$('file').files[0];if(!file)return;if(file.size>200000)throw new Error('模板文件过大。');const parsed=JSON.parse(await file.text());config=VisualEngine.validate(parsed);form();notify('已导入模板，点预览检查后可保存。');$('file').value='';});
     $('delete-template').onclick=safe(async()=>{if(!templates[config.id])throw new Error('当前模板尚未保存。');if(!confirm('删除本机保存的这个模板？采集结果保留。'))return;delete templates[config.id];await storage.set(templates);templateOptions();notify('模板已删除。');});
     $('example').onclick=safe(async()=>{config=await api('example');form();notify('已填入演示模板。点“预览前5条”，再点开始。你也可以重新点选修改。');});
-    for(const [quick,target]of[['quick-preview','preview'],['quick-start','start'],['quick-stop','stop'],['quick-export','excel']])$(quick).onclick=()=>$(target).click();
+    for(const [quick,target]of[['quick-preview','preview'],['quick-stop','stop'],['quick-export','excel']])$(quick).onclick=()=>$(target).click();
+    function guideStep(){
+      if(!context)return {action:'connect',title:'先打开要采集的职位列表',hint:'切到职位列表，点工具栏工作台图标，再点“连接列表页”。',button:'连接列表页'};
+      readForm();
+      if(!config.listSelector || !config.fields.some(f=>f.scope==='list'))return {action:'detect',title:'第1步：自动识别列表和字段',hint:'点一下自动识别。找不到列表时，再点任意一个职位标题。',button:'自动识别页面'};
+      if($('quick-details').checked && !config.fields.some(f=>f.scope==='detail' && f.selector)){
+        if(manualDetail)return {action:'description',title:'只需补点一下职位描述',hint:'详情页已打开。点下方按钮，再选择包含职责、要求的完整正文。',button:'点选职位描述'};
+        if(!config.detail?.sampleUrl)return {action:'entry',title:'补充职位详情入口',hint:'工具还没找到详情链接。点“点一个职位标题”补选入口；只要列表信息可取消“同时读取职位详情”。',button:'自动查找详情入口'};
+        return {action:'detail',title:'第2步：自动试读一条职位详情',hint:'自动打开一条职位并识别正文。Chrome 询问网站权限时点“允许”。',button:'自动读取详情'};
+      }
+      try{VisualEngine.validate(config);}catch(e){if(/采集数量/.test(e.message))return {action:'count',title:'先填写采集数量',hint:e.message,button:'修改采集数量'};const missing=config.fields.find(f=>!f.selector);if(missing)return {action:'field',field:missing,title:'补点一下“'+missing.name+'”',hint:'点击下方按钮，在网页中选择这项内容的位置。',button:'点选'+missing.name};return {action:'advanced',title:'还差一项设置',hint:e.message+'。点下方按钮补充。',button:'打开需要的设置'};}
+      return {action:'run',title:'已准备好，可以开始采集',hint:'先检查下方预览；开始后自动逐条读取、翻页并导出 Excel。',button:'开始采集'};
+    }
+    function renderGuide(){
+      if(!$('guide-action'))return;
+      const step=guideStep();$('guide-title').textContent=guideWorking?'正在自动准备，请稍候…':step.title;$('guide-hint').textContent=step.hint;$('guide-action').textContent=step.button;$('guide-action').disabled=guideWorking || busy || !!latest?.running;$('guide-pick-title').disabled=guideWorking || busy || !!latest?.running;
+      $('guide-cancel').hidden=!(guideWorking && step.action==='detail');
+      if(latest?.running){$('guide-title').textContent='正在自动采集';$('guide-hint').textContent='保持职位列表打开，完成后自动导出 Excel。需要中断时点顶部“暂停”。';$('guide-action').textContent='采集中…';}else if(latest?.status==='paused' && step.action==='run'){$('guide-title').textContent='已暂停，已有结果保留';$('guide-hint').textContent=latest.message;$('guide-action').textContent='继续采集';}
+      $('guide-pick-title').hidden=!['detect','entry'].includes(step.action);$('quick-start').textContent=step.action==='run'?'开始采集':'下一步';
+    }
+    async function rememberPrepared(){try{VisualEngine.validate(config);templates[config.id]=structuredClone(config);await storage.set(templates);templateOptions();$('templates').value=config.id;}catch{}}
+    async function findEntry(){
+      const entry=await api('resolveEntry',readForm());const url=new URL(entry.url);if(!/^https?:$/.test(url.protocol))throw new Error('未找到普通职位链接，请点一个职位标题。');
+      config.detail={...config.detail,mode:'page',origin:url.origin,sampleUrl:url.href,sampleTitle:entry.title || ''};form();
+    }
+    async function detectPage(){
+      if(latest?.running)throw new Error('请先暂停采集。');
+      if(latest?.records.length)throw new Error('已有结果保留。重新识别前，请先导出并清空结果。');
+      const result=await api('suggest',readForm());config=result.config;autoSample=null;manualDetail=false;form();table(result.records,config.fields);
+      $('guide-summary').textContent=`已识别 ${result.count} 条；字段：${config.fields.map(f=>f.name).join('、')}。`+(result.warnings.length?' '+result.warnings.join(' '):'');
+      if($('quick-details').checked)try{await findEntry();}catch(e){notify(e.message,true);return;}
+      await rememberPrepared();notify($('quick-details').checked?'列表已识别。下一步点“自动读取详情”。':'列表已识别并保存，下方预览正确即可开始。');
+    }
+    async function prepareDetails(){
+      const result=await api('autoDetail',{config:readForm(),url:config.detail.sampleUrl});
+      if(result.needsSelection){manualDetail=true;notify(result.message);renderGuide();return;}
+      config.fields=config.fields.filter(f=>f.scope!=='detail').concat(result.fields);autoSample=result.sample;
+      config.detail={...config.detail,mode:'page',origin:new URL(result.url).origin,identityField:'',identitySelector:''};
+      if(result.title && result.title.replace(/\s+/g,'')===config.detail.sampleTitle?.replace(/\s+/g,'')){config.detail.identityField='auto-title';config.detail.identitySelector=result.identitySelector;}
+      form();await rememberPrepared();$('detail-preview').hidden=false;$('detail-preview').textContent='详情试读（仅第一条样例）：\n'+Object.values(autoSample).join('\n');notify('详情已自动识别并保存。检查预览后，点“开始采集”。');
+    }
+    async function guideAction(){
+      if(guideWorking || busy || latest?.running)return;
+      const step=guideStep();
+      if(step.action==='run'){$('start').click();return;}
+      if(step.action==='count'){$('count').focus();$('count').select();return;}
+      if(step.action==='advanced'){$('advanced-settings').open=true;$('fields').scrollIntoView({block:'center'});notify(step.hint,true);return;}
+      guideWorking=true;renderGuide();
+      try{
+        if(step.action==='field'){const chosen=await pick(step.field.scope==='detail'?'field-detail':'field-list');step.field.selector=chosen.selector;form();await rememberPrepared();}
+        else if(step.action==='connect'){await connect(true);await detectPage();}
+        else if(step.action==='detect')await detectPage();
+        else if(step.action==='entry')await findEntry();
+        else if(step.action==='detail')await prepareDetails();
+        else if(step.action==='description'){
+          const selected=await pick('field-detail');config.fields=config.fields.filter(f=>f.scope!=='detail').concat({id:'auto-description',name:'职位描述',scope:'detail',type:'text',selector:selected.selector});manualDetail=false;form();await rememberPrepared();notify('职位描述已保存，可以开始采集。');
+        }
+      }finally{guideWorking=false;renderGuide();}
+    }
+    $('guide-cancel').onclick=safe(async()=>{await api('stop');notify('准备已取消。已有配置和结果保留。');});
+    $('guide-action').onclick=safe(guideAction);$('quick-start').onclick=safe(guideAction);
+    $('guide-pick-title').onclick=safe(async()=>{const selected=await pick('detail-click');$('click-selector').value=selected.selector;config.detail.clickSelector=selected.selector;await detectPage();});
+    $('quick-details').onchange=()=>{readForm();if(!$('quick-details').checked){config.fields=config.fields.filter(f=>f.scope!=='detail');autoSample=null;manualDetail=false;form();rememberPrepared();}renderGuide();};
     function detailMode(){const page=$('detail-mode').value==='page';$('page-detail').hidden=!page;$('same-help').hidden=page;$('same-detail').parentElement.hidden=page;$('wait-field').parentElement.hidden=page;}
     let draftTimer,draftingReady=false;
     function persistDraft(){if(!storage.setDraft || !draftingReady)return;clearTimeout(draftTimer);draftTimer=setTimeout(()=>{try{storage.setDraft(readForm()).catch(()=>{});}catch{}},150);}
-    element.addEventListener('input',persistDraft);element.addEventListener('change',persistDraft);
+    element.addEventListener('input',()=>{persistDraft();renderGuide();});element.addEventListener('change',()=>{persistDraft();renderGuide();});
     form();
     const ready=(async()=>{templates=await storage.get() || {};templateOptions();const draft=await storage.getDraft?.();if(draft?.version===1 && Array.isArray(draft.fields)){config=draft;form();}draftingReady=true;await connect();persistDraft();await update();})().catch(error=>notify(error.message,true));
     const timer=setInterval(update,1000);

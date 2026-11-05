@@ -14,7 +14,7 @@ function setup(){
     remove:async id=>{tabs.delete(id);calls.push(['remove',id]);}
   },scripting:{executeScript:async args=>{calls.push(['execute',args]);return [{result:args.world==='MAIN'?{ok:true,url:'https://jobs.test/detail/1'}:{ok:true,data:{description:'描述',_detailUrl:tabs.get(args.target.tabId).url}}}];}}};
   const context=vm.createContext({chrome,URL,Date,setTimeout});
-  for(const file of ['detail-reader.js','detail-manager.js'])vm.runInContext(fs.readFileSync(new URL('../extension/'+file,import.meta.url),'utf8'),context);
+  for(const file of ['detail-reader.js','detect.js','detail-manager.js'])vm.runInContext(fs.readFileSync(new URL('../extension/'+file,import.meta.url),'utf8'),context);
   return {chrome,calls,session,tabs,manager:context.VisualDetailManager};
 }
 test('different detail URLs reuse one owned background tab and never close sample',async()=>{
@@ -72,4 +72,18 @@ test('parallel reads for a list are rejected to prevent overwritten detail navig
 test('reader functions remain valid when Chrome serializes them for injection',()=>{
   const context=vm.createContext({});vm.runInContext(fs.readFileSync(new URL('../extension/detail-reader.js',import.meta.url),'utf8'),context);
   for(const fn of Object.values(context.VisualDetail))assert.doesNotThrow(()=>new vm.Script('('+fn.toString()+')'));
+});
+test('automatic detail preparation detects fields then closes its owned sample',async()=>{
+  const a=setup();a.chrome.scripting.executeScript=async()=>[{result:{ok:true,data:{fields:[{id:'auto-description',selector:'.job-description'}],sample:{'auto-description':'正文'},url:'https://jobs.test/detail/1'}}}];
+  const result=await a.manager.prepare(1,{config,url:'https://jobs.test/detail/1'});
+  assert.equal(result.fields[0].id,'auto-description');assert.ok(!a.tabs.has(100));assert.ok(a.tabs.has(2));
+});
+test('unknown detail layout keeps and focuses sample for one manual selection',async()=>{
+  const a=setup();a.chrome.scripting.executeScript=async()=>[{result:{ok:false,needsSelection:true,error:'点选正文'}}];
+  const result=await a.manager.prepare(1,{config,url:'https://jobs.test/detail/1'});
+  assert.equal(result.needsSelection,true);assert.equal(result.sampleTabId,100);assert.equal(a.tabs.get(100).active,true);await a.manager.close(1);
+});
+test('automatic preparation keeps challenge open for user verification',async()=>{
+  const a=setup();a.chrome.scripting.executeScript=async()=>[{result:{ok:false,needsUser:true,error:'人工验证'}}];
+  await assert.rejects(a.manager.prepare(1,{config,url:'https://jobs.test/detail/1'}),e=>e.needsUser===true);assert.ok(a.tabs.has(100));await a.manager.close(1);
 });
