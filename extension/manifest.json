@@ -1,0 +1,25 @@
+{
+  "manifest_version": 3,
+  "name": "前程无忧一键采集",
+  "version": "1.0.0",
+  "minimum_chrome_version": "120",
+  "description": "按固定代码提取51job十个字段，无需配置定位规则。",
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "storage",
+    "alarms",
+    "downloads"
+  ],
+  "optional_host_permissions": [
+    "https://we.51job.com/*",
+    "https://jobs.51job.com/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_title": "前程无忧一键采集",
+    "default_popup": "popup.html"
+  }
+}
