@@ -369,5 +369,34 @@ class VisualCollectorTests(unittest.TestCase):
         self.page.evaluate("draftStudio.dispose();document.querySelector('#draft-area').remove()")
 
 
+    def test_detail_title_picker_infers_missing_list_and_saves_relative_entry(self):
+        config=self.nested_jobs();config['listSelector']=''
+        config['fields'].append({'id':'description','name':'详情','scope':'detail','type':'text','selector':'#detail-body'})
+        config['detail']={'mode':'page','origin':'https://jobs.example'}
+        self.page.evaluate('c=>VisualDemo.studio.loadConfig(c)',config)
+        self.page.locator('#pick-click').click()
+        title=self.page.locator('#demo-page .jname').nth(1);title.hover();title.click()
+        self.page.wait_for_function("document.querySelector('#notice').textContent.includes('已锁定职位标题')")
+        self.assertEqual(self.page.locator('[data-vpc-ui]').count(),0)
+        self.assertIn('自动识别 3 条',self.page.locator('#list-summary').inner_text())
+        values=self.page.evaluate("""()=>{const c=VisualDemo.studio.getConfig();return [...document.querySelectorAll(c.listSelector)].map(row=>row.querySelector(c.detail.clickSelector).innerText);}""")
+        self.assertEqual(values,['运营支持一','运营支持二','运营支持三'])
+
+    def test_list_picker_prerequisites_fail_before_overlay_with_clear_guidance(self):
+        for kind,selector in [('field-list',''),('detail-click','['),('detail-click','.no-such-list')]:
+            error=self.page.evaluate("""opts=>{try{VisualDemo.engine.pick(opts);return '';}catch(e){return e.message;}}""",{'kind':kind,'listSelector':selector})
+            self.assertIn('第1步',error)
+            self.assertEqual(self.page.locator('[data-vpc-ui]').count(),0)
+
+    def test_detail_picker_does_not_infer_one_title_as_a_list(self):
+        self.page.evaluate("document.querySelector('#demo-page').innerHTML='<div id=single><span id=only-title>一个职位</span></div>'")
+        self.page.evaluate("()=>{window.pickFailure='';VisualDemo.engine.pick({kind:'detail-click',listSelector:''}).catch(e=>window.pickFailure=e.message);}")
+        title=self.page.locator('#only-title');title.hover();title.click()
+        self.assertIn('第1步',self.page.locator('[data-vpc-ui=tip]').inner_text())
+        self.page.keyboard.press('Escape')
+        self.assertEqual(self.page.locator('[data-vpc-ui]').count(),0)
+        self.assertIn('取消',self.page.evaluate('pickFailure'))
+
+
 if __name__=='__main__':
     unittest.main()

@@ -236,6 +236,14 @@
     function pick({kind, listSelector: list=''}) {
       if(running)throw new Error('请先暂停再修改点选。');
       cancelledPick?.();
+      list=String(list || '').trim();
+      if(kind==='field-list' || kind==='detail-click') {
+        if(!list && kind==='field-list')throw new Error('请先在第1步点选一整条职位卡片，再点选列表字段。');
+        if(list) {
+          let rows;try {rows=[...root.querySelectorAll(list)].filter(visible);}catch {throw new Error('列表定位规则无效，请回到第1步重新点选一整条记录。');}
+          if(!rows.length)throw new Error('当前列表规则没有匹配记录，请回到第1步重新点选列表。');
+        }
+      }
       return new Promise((resolve,reject)=>{
         let selected=null, hovered=null;
         const overlay=document.createElement('div');overlay.dataset.vpcUi='picker';
@@ -253,9 +261,17 @@
             let result;
             if(kind==='list')result=VisualLocator.listSelector(selected,root);
             else if(kind==='field-list' || kind==='detail-click') {
-              const row=[...root.querySelectorAll(list)].find(item=>item.contains(selected));
+              let inferred=null;
+              if(!list && kind==='detail-click') {
+                const unit=VisualLocator.probableItem(selected,root);
+                if(unit===selected || unit===root || unit===document.body || VisualLocator.nestedRecords(unit)>1)throw new Error('尚未选定列表。请按Esc退出，在第1步点选包含标题、薪资和公司的整张职位卡片。');
+                inferred=VisualLocator.listSelector(unit,root);
+                if(inferred.count<2)throw new Error('未识别到多条职位卡片。请按Esc退出，在第1步先选择列表。');
+              }
+              const row=[...root.querySelectorAll(inferred?.selector || list)].find(item=>item.contains(selected));
               if(!row)throw new Error('请在列表中的某一条记录内点选；详情区字段请切换读取区域。');
               result={selector:VisualLocator.unique(selected,row)};
+              if(inferred)Object.assign(result,{listSelector:inferred.selector,count:inferred.count,autoList:true});
             } else result={selector:VisualLocator.unique(selected,root)};
             result.sample=(selected.innerText || selected.getAttribute('alt') || selected.tagName).trim().slice(0,160);
             cleanup();resolve(result);

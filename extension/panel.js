@@ -19,6 +19,7 @@ const api=async(action,payload)=>{
   if(detail && action!=='detailContext' && tabId==null)throw new Error('请先打开一个详情页，点击工具栏图标，再点“连接详情样例”。');
   const response=await chrome.runtime.sendMessage({type:'VPC_RPC',tabId,action:action==='detailContext'?'context':action,payload});
   if(!response?.ok)throw new Error(response?.error || '请在目标网页点一次工具栏图标。');
+  if(action==='detailContext' && response.data.tabId===listTabId)throw new Error('这还是列表标签页。请先在新标签页打开一个职位详情，点击该页工作台图标，再连接详情样例。');
   if(action==='context' || action==='detailContext') {
     if(detail)detailTabId=response.data.tabId;else listTabId=response.data.tabId;
     await chrome.storage.session.set({[bindingKey]:{list:listTabId,detail:detailTabId}});

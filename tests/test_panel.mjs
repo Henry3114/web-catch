@@ -2,9 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
-function setup({allowed=true}={}){
+function setup({allowed=true,activeId=30}={}){
   const calls=[],data={};let app;
-  const chrome={windows:{getCurrent:async()=>({id:7})},storage:{session:{get:async()=>({'vpc.bindings.7':{list:10,detail:20}}),set:async d=>Object.assign(data,d)},local:{get:async()=>({}),set:async()=>{}}},permissions:{request:p=>{calls.push(['permission',p]);return Promise.resolve(allowed);}},runtime:{sendMessage:async m=>{calls.push(['message',m]);return {ok:true,data:m.action==='context'?{tabId:m.tabId ?? 30,url:'https://detail.test/sample',title:'sample'}:{records:[]}};}}};
+  const chrome={windows:{getCurrent:async()=>({id:7})},storage:{session:{get:async()=>({'vpc.bindings.7':{list:10,detail:20}}),set:async d=>Object.assign(data,d)},local:{get:async()=>({}),set:async()=>{}}},permissions:{request:p=>{calls.push(['permission',p]);return Promise.resolve(allowed);}},runtime:{sendMessage:async m=>{calls.push(['message',m]);return {ok:true,data:m.action==='context'?{tabId:m.tabId ?? activeId,url:'https://detail.test/sample',title:'sample'}:{records:[]}};}}};
   vm.runInNewContext(fs.readFileSync(new URL('../extension/panel.js',import.meta.url),'utf8'),{chrome,URL,document:{querySelector:()=>({})},VisualStudio:{create:opts=>app=opts}});
   return {app,calls,data};
 }
@@ -24,4 +24,9 @@ test('detail field picks use sample tab while list picks keep original tab',asyn
 test('connecting detail sample does not replace the list binding',async()=>{
   const a=setup();await a.app.api('detailContext',{current:true});await a.app.api('state');
   assert.equal(a.data['vpc.bindings.7'].list,10);assert.equal(a.data['vpc.bindings.7'].detail,30);assert.equal(a.calls.at(-1)[1].tabId,10);
+});
+
+test('list tab cannot be bound as an independent detail sample',async()=>{
+  const a=setup({activeId:10});await assert.rejects(a.app.api('detailContext',{current:true}),/这还是列表标签页/);
+  assert.equal(a.data['vpc.bindings.7'],undefined);
 });
