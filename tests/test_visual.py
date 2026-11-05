@@ -672,5 +672,24 @@ class VisualCollectorTests(unittest.TestCase):
         self.assertEqual(result['missing'],'');self.assertEqual(result['narrow'],'本科以上，熟悉SQL。');self.assertIn('岗位职责',result['whole'])
 
 
+    def test_setup_check_uses_real_results_and_invalidates_after_rule_change(self):
+        self.page.locator('#example').click();self.page.locator('#check-setup').click()
+        self.page.wait_for_function("document.querySelector('#setup-checks').textContent.includes('√ 职位列表')")
+        self.assertIn('○ 详情页面',self.page.locator('#setup-checks').inner_text())
+        self.page.locator('[data-field-id="name"] .rule').evaluate("el=>{el.value='.missing';el.dispatchEvent(new Event('input',{bubbles:true}));}")
+        self.page.wait_for_function("!document.querySelector('#setup-checks').textContent.includes('√')")
+        self.page.locator('#check-setup').click()
+        self.page.wait_for_function("document.querySelector('#setup-checks').textContent.includes('× 岗位名称')")
+        self.assertIn('未读到内容',self.page.locator('[data-field-id="name"] .field-check').inner_text())
+
+    def test_detail_error_names_missing_field_and_identity_values(self):
+        self.page.add_script_tag(path=str(ROOT/'extension/detail-reader.js'))
+        self.page.evaluate("""()=>{window.diagnosis=null;VisualDetail.read({fields:[{id:'requirements',name:'岗位要求',selector:'.missing',type:'text'}],detail:{identitySelector:'#detail-title'},expected:'另一个职位',timeout:1000,url:location.href}).then(r=>diagnosis=r);}""")
+        self.tick('diagnosis!==null')
+        result=self.page.evaluate('diagnosis')
+        self.assertFalse(result['ok']);self.assertIn('岗位要求',result['error']);self.assertIn('另一个职位',result['error'])
+        self.assertTrue(any(c['id']=='field:requirements' and c['status']=='fail' for c in result['checks']))
+
+
 if __name__=='__main__':
     unittest.main()

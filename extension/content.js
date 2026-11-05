@@ -4,7 +4,7 @@
   let initialized=false, tabId=null;
   const engine=VisualEngine.create({detailReader:async payload=>{
     const response=await chrome.runtime.sendMessage({type:'VPC_DETAIL',action:'collect',payload});
-    if(!response?.ok){const error=new Error(response?.error || '无法读取详情。');error.needsUser=!!response?.needsUser;throw error;}
+    if(!response?.ok){const error=new Error(response?.error || '无法读取详情。');error.needsUser=!!response?.needsUser;error.checks=response?.checks || [];throw error;}
     return response.data;
   },onUpdate:async data=>{
     if(tabId==null)return;
@@ -34,6 +34,7 @@
       if(request.action==='context')return {url:location.href,title:document.title};
       if(request.action==='state')return engine.snapshot();
       if(request.action==='suggest')return engine.suggest(request.payload);
+      if(request.action==='checkList')return engine.checkList(request.payload);
       if(request.action==='entry')return engine.entry(request.payload);
       if(request.action==='pick')return engine.pick(request.payload);
       if(request.action==='cancelPick'){engine.cancelPick();return {};}

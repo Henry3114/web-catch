@@ -2,7 +2,7 @@
 (() => {
   const DEFAULT=()=>({version:1,id:crypto.randomUUID(),name:'我的采集模板',quickDetails:true,match:{origin:''},listSelector:'',fields:[],keyFields:[],detail:{mode:'same',origin:'',linkField:'',clickSelector:'',identityField:'',identitySelector:'',identityType:'text',waitField:'',allowSame:false},pagination:{mode:'none',selector:''},options:{count:20,delay:1500,timeout:15000,maxPages:30,dropEmpty:true}});
   function create({element,api,storage,demo=false}) {
-    let config=DEFAULT(), context=null, templates={}, latest=null, busy=false, startedHere=false,pickingRole='list',guideWorking=false,autoSample=null,manualDetail=false;
+    let config=DEFAULT(), context=null, templates={}, latest=null, busy=false, startedHere=false,pickingRole='list',guideWorking=false,autoSample=null,manualDetail=false,validation=null,runtimeCheckKey='';
     element.className='studio';
     element.innerHTML=`<div class="top"><div class="mark">V</div><div><h1>网页采集工作台</h1><span class="tag">${demo?'离线演示 · 示例数据':'独立试用版 · 配置驱动'}</span></div></div>
       <p class="hint">先自动识别页面，再按提示补充点选。</p>
@@ -10,7 +10,7 @@
       <div id="notice" role="status">正在连接当前网页…</div><p id="source" class="source"></p>
       <div class="buttons"><button id="connect">连接列表页</button><button id="example" ${demo?'':'hidden'}>填入演示模板</button><a class="demo-link" href="demo.html" target="_blank" ${demo?'hidden':''}>先看离线演示 ↗</a></div>
       <section class="card guide"><span class="tag">简单模式</span><h2 id="guide-title">先连接职位列表</h2><p id="guide-hint" class="hint"></p><div class="numberrow"><label>采集数量<input id="count" type="number" min="1" max="10000" value="20"></label><label><input id="quick-details" type="checkbox" checked> 同时读取职位详情</label></div><div class="buttons"><button id="guide-action" class="primary">自动识别页面</button><button id="guide-pick-title">点一个职位标题</button><button id="guide-cancel" hidden>取消准备</button></div><p id="guide-summary" class="hint"></p></section>
-      <details id="advanced-settings"><summary>高级设置（字段、模板和翻页，可选）</summary>
+      <section class="card"><div class="cardhead"><h2>设置检查</h2><button id="check-setup">检查设置</button></div><p class="hint">√ 样例实测通过　× 检查失败　○ 待验证。检查第一条职位，修改设置后需重新检查。</p><div id="setup-checks" role="status"></div></section><details id="advanced-settings"><summary>高级设置（字段、模板和翻页，可选）</summary>
       <section class="card"><div class="cardhead"><h2>模板</h2><button id="new">新建</button></div>
       <select id="templates"><option value="">选择已保存模板</option></select><label>模板名称<input id="name" maxlength="80"></label><p id="template-host" class="hint"></p><button id="bind">绑定当前网站</button>
       <div class="buttons"><button id="save">保存到本机</button><button id="json">导出模板</button><button id="import">导入模板</button><button id="delete-template" class="danger">删除模板</button></div><input id="file" type="file" accept="application/json,.json" hidden></section>
@@ -62,7 +62,7 @@
       for(const f of config.fields){
         if(!f.selector && !f.scopeChosen && /岗位要求|任职要求|岗位职责|工作职责|职位描述|岗位描述/.test(f.name)){f.scope='detail';config.keyFields=config.keyFields.filter(id=>id!==f.id);$('quick-details').checked=true;}
         const card=document.createElement('div');card.className='field';card.dataset.fieldId=f.id;
-        card.innerHTML='<div class="row"><input class="fieldname" placeholder="字段名称"><button class="pick fixed">点选</button><button class="remove fixed" title="删除字段">×</button></div><div class="field-grid"><select class="scope"><option value="list">列表内字段（自动返回）</option><option value="detail">详情页字段（自动打开）</option></select><select class="type"><option value="text">文字</option><option value="href">链接地址</option><option value="src">图片地址</option></select></div><label class="hint"><input class="key" type="checkbox"> 用于去重</label><details><summary>定位规则</summary><input class="rule"></details><p class="selector"></p><label class="section-label">正文读取<select class="section-mode"><option value="auto">按字段名称自动分段</option><option value="whole">所选区域全部文字</option><option value="duties">只取工作／岗位职责</option><option value="requirements">只取岗位／任职要求</option></select></label><p class="pick-state hint" role="status"></p>';
+        card.innerHTML='<div class="row"><input class="fieldname" placeholder="字段名称"><button class="pick fixed">点选</button><button class="remove fixed" title="删除字段">×</button></div><div class="field-grid"><select class="scope"><option value="list">列表内字段（自动返回）</option><option value="detail">详情页字段（自动打开）</option></select><select class="type"><option value="text">文字</option><option value="href">链接地址</option><option value="src">图片地址</option></select></div><label class="hint"><input class="key" type="checkbox"> 用于去重</label><details><summary>定位规则</summary><input class="rule"></details><p class="selector"></p><label class="section-label">正文读取<select class="section-mode"><option value="auto">按字段名称自动分段</option><option value="whole">所选区域全部文字</option><option value="duties">只取工作／岗位职责</option><option value="requirements">只取岗位／任职要求</option></select></label><p class="pick-state hint" role="status"></p><p class="field-check hint"></p>';
         card.querySelector('.section-label').hidden=f.scope!=='detail' || f.type!=='text';card.querySelector('.section-mode').value=f.section || 'auto';card.querySelector('.section-mode').onchange=e=>{f.section=e.target.value;autoSample=null;};
         card.querySelector('.fieldname').value=f.name;card.querySelector('.scope').value=f.scope;card.querySelector('.type').value=f.type;card.querySelector('.rule').value=f.selector;card.querySelector('p').textContent=f.selector || '尚未点选';card.querySelector('.key').checked=config.keyFields.includes(f.id);
         card.querySelector('.fieldname').oninput=e=>{f.name=e.target.value;autoSample=null;if(!f.selector && !f.scopeChosen && /岗位要求|任职要求|岗位职责|工作职责|职位描述|岗位描述/.test(f.name)){f.scope='detail';card.querySelector('.scope').value='detail';config.keyFields=config.keyFields.filter(id=>id!==f.id);card.querySelector('.key').checked=false;card.querySelector('.key').disabled=true;$('quick-details').checked=true;card.querySelector('.pick').textContent='点选详情';card.querySelector('.pick-state').textContent='点选时会自动切换到详情页。';$('detail').hidden=false;}identityOptions();};
@@ -83,7 +83,7 @@
         });
         $('fields').append(card);
       }
-      $('detail').hidden=!config.fields.some(f=>f.scope==='detail');identityOptions(reset);persistDraft();renderGuide();
+      renderChecks();$('detail').hidden=!config.fields.some(f=>f.scope==='detail');identityOptions(reset);persistDraft();renderGuide();
     }
     function identityOptions(reset=false){
       const linked=reset?config.detail?.linkField:($('link-field').value || config.detail?.linkField);
@@ -126,7 +126,7 @@
     function exportResult(){if(!latest?.records.length)throw new Error('还没有结果，请先预览并运行。');const c=latest.config,selected=latest.records.slice(0,c.options.count);const bytes=VisualXlsx.createWorkbook(selected,c.fields,{dropEmpty:c.options.dropEmpty,errors:latest.errors});download(bytes,c.name.replace(/[\\/:*?"<>|]/g,'_')+'_'+selected.length+'条.xlsx','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');}
     async function update(){
       if(busy || guideWorking)return;
-      try{latest=await api('state');$('progress').textContent=`${latest.records.length} / ${latest.config?.options.count || config.options.count} 条`;$('quick-progress').textContent=$('progress').textContent;$('state').textContent=({idle:'待配置',running:'运行中',paused:'已暂停',done:'已结束'})[latest.status] || latest.status;$('run-message').textContent=latest.status==='idle' && config.listSelector && config.fields.length?'配置已准备好，预览正确后点击开始采集。':latest.message;$('stop').disabled=!latest.running;$('quick-stop').disabled=!latest.running;$('quick-start').disabled=latest.running;renderGuide();if(latest.status==='idle' && guideStep().action==='run')$('state').textContent='已准备';$('start').disabled=latest.running;
+      try{latest=await api('state');$('progress').textContent=`${latest.records.length} / ${latest.config?.options.count || config.options.count} 条`;$('quick-progress').textContent=$('progress').textContent;$('state').textContent=({idle:'待配置',running:'运行中',paused:'已暂停',done:'已结束'})[latest.status] || latest.status;if(latest.validation?.length && latest.status==='paused' && runtimeCheckKey!==JSON.stringify(latest.validation)){runtimeCheckKey=JSON.stringify(latest.validation);validation={key:checkKey(latest.config || config,latest.source),checks:latest.validation};renderChecks();}$('run-message').textContent=latest.status==='idle' && config.listSelector && config.fields.length?'配置已准备好，预览正确后点击开始采集。':latest.message;$('stop').disabled=!latest.running;$('quick-stop').disabled=!latest.running;$('quick-start').disabled=latest.running;renderGuide();if(latest.status==='idle' && guideStep().action==='run')$('state').textContent='已准备';$('start').disabled=latest.running;
         if(latest.records.length)table(latest.records,latest.config.fields);
         if(startedHere && !latest.running && ['done','paused'].includes(latest.status)){
           startedHere=false;if(latest.records.length && $('auto-export').checked)exportResult();
@@ -175,7 +175,7 @@
     }
     function renderGuide(){
       if(!$('guide-action'))return;
-      const step=guideStep();$('guide-title').textContent=guideWorking?'正在自动准备，请稍候…':step.title;$('guide-hint').textContent=step.hint;$('guide-action').textContent=step.button;$('guide-action').disabled=guideWorking || busy || !!latest?.running;$('guide-pick-title').disabled=guideWorking || busy || !!latest?.running;
+      const step=guideStep();renderChecks();$('guide-title').textContent=guideWorking?'正在自动准备，请稍候…':step.title;$('guide-hint').textContent=step.hint;$('guide-action').textContent=step.button;$('guide-action').disabled=guideWorking || busy || !!latest?.running;$('guide-pick-title').disabled=guideWorking || busy || !!latest?.running;
       $('guide-cancel').hidden=!(guideWorking && step.action==='detail');
       if(latest?.running){$('guide-title').textContent='正在自动采集';$('guide-hint').textContent='保持职位列表打开，完成后自动导出 Excel。需要中断时点顶部“暂停”。';$('guide-action').textContent='采集中…';}else if(latest?.status==='paused' && step.action==='run'){$('guide-title').textContent='已暂停，已有结果保留';$('guide-hint').textContent=latest.message;$('guide-action').textContent='继续采集';}
       $('guide-pick-title').hidden=!['detect','entry'].includes(step.action);$('quick-start').textContent=step.action==='run'?'开始采集':'下一步';
@@ -227,6 +227,21 @@
     $('guide-action').onclick=safe(guideAction);$('quick-start').onclick=safe(guideAction);
     $('guide-pick-title').onclick=safe(async()=>{const selected=await pick('detail-click');$('click-selector').value=selected.selector;config.detail.clickSelector=selected.selector;await detectPage();});
     $('quick-details').onchange=()=>{readForm();if(!$('quick-details').checked){config.fields=config.fields.filter(f=>f.scope!=='detail');autoSample=null;manualDetail=false;form();rememberPrepared();}renderGuide();};
+    function checkKey(c=config,source=context?.url){return JSON.stringify({source,fields:c.fields,detail:c.detail,list:c.listSelector,match:c.match,pagination:c.pagination});}
+    function renderChecks(){
+      if(!$('setup-checks'))return;
+      const checked=validation?.key===checkKey()?validation.checks:[];
+      const expected=[{id:'list',label:'职位列表'},...config.fields.map(f=>({id:'field:'+f.id,label:f.name})),...(config.fields.some(f=>f.scope==='detail')?[{id:'entry',label:'详情入口'},{id:'detail-page',label:'详情页面'},{id:'identity',label:'职位对应关系'}]:[])];
+      const all=expected.map(item=>checked.find(c=>c.id===item.id) || {...item,status:'pending',message:'待验证，请点“检查设置”'});
+      $('setup-checks').replaceChildren();
+      for(const item of all){const line=document.createElement('p');line.className='check-'+item.status;line.textContent=({pass:'√ ',fail:'× ',pending:'○ '})[item.status]+item.label+'：'+item.message;$('setup-checks').append(line);}
+      for(const card of $('fields').children){const item=all.find(c=>c.id==='field:'+card.dataset.fieldId),target=card.querySelector('.field-check');if(item && target){target.className='field-check check-'+item.status;target.textContent=({pass:'√ ',fail:'× ',pending:'○ '})[item.status]+item.message;}}
+    }
+    $('check-setup').onclick=safe(async()=>{
+      if(busy || guideWorking || latest?.running)throw new Error('请先结束点选或暂停采集，再检查设置。');
+      readForm();const key=checkKey();$('check-setup').disabled=true;notify('正在检查列表、真实详情链接、职位对应关系和各字段内容…');
+      try{const result=await api('checkSetup',{config:structuredClone(config)});validation={key,checks:result.checks};renderChecks();const failed=result.checks.filter(c=>c.status==='fail');notify(failed.length?'检查发现问题：'+failed.map(c=>c.label).join('、')+'。请查看检查项旁的具体原因。':'已检查的项目通过；○ 项尚未验证，不代表已通过。',!!failed.length);}finally{$('check-setup').disabled=false;}
+    });
     function detailMode(){const page=$('detail-mode').value==='page';$('page-detail').hidden=!page;$('same-help').hidden=page;$('same-detail').parentElement.hidden=page;$('wait-field').parentElement.hidden=page;}
     let draftTimer,draftingReady=false;
     function persistDraft(){if(!storage.setDraft || !draftingReady)return;clearTimeout(draftTimer);draftTimer=setTimeout(()=>{try{storage.setDraft(readForm()).catch(()=>{});}catch{}},150);}

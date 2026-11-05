@@ -12,6 +12,19 @@ async function connect(tabId){
   if(!reply?.ok)throw new Error(reply?.error || '无法连接网页，请刷新后重试。');
   return tab;
 }
+async function resolveEntry(id,tab,config){
+      if(config.detail?.entryInvalid || (config.detail?.sampleUrl && !VisualDetect.url(config.detail.sampleUrl,tab.url)))await VisualDetailManager.cancel(id);
+      const response=await chrome.tabs.sendMessage(id,{type:'VPC_CONTENT',action:'entry',payload:config});
+      if(!response?.ok)throw new Error(response?.error || '请先识别列表。');
+      const publicUrl=VisualDetect.url(response.data.link,tab.url);
+      if(publicUrl)return {...response.data,url:publicUrl};
+      if(!config.detail?.clickSelector)throw new Error('没有识别到职位入口。请点一次职位标题，或取消“同时读取职位详情”。');
+      const [result]=await chrome.scripting.executeScript({target:{tabId:id},world:'MAIN',func:VisualDetail.capture,args:[{rowSelector:response.data.rowSelector,clickSelector:config.detail.clickSelector}]});
+      if(!result?.result?.ok)throw new Error(result?.result?.error || '没有找到详情链接。');
+      const resolved=VisualDetect.url(result.result.url,tab.url);
+      if(!resolved){const e=new Error('未找到有效职位地址。请点“重新获取详情链接”，或补点一个职位标题。');e.needsEntry=true;throw e;}
+      return {...response.data,url:resolved};
+}
 chrome.action.onClicked.addListener(tab=>{
   if(tab.id==null)return;
   // 必须直接在用户点击事件中打开侧栏。
@@ -22,7 +35,7 @@ chrome.runtime.onMessage.addListener((message,sender,reply)=>{
   if(message?.type==='VPC_DETAIL' && sender.id===chrome.runtime.id && sender.tab?.id!=null){
     const id=sender.tab.id;
     const operation=message.action==='collect'?VisualDetailManager.collect(id,message.payload):message.action==='finish'?VisualDetailManager.close(id,{keep:message.needsUser}):Promise.reject(new Error('未知详情操作。'));
-    operation.then(data=>reply({ok:true,data})).catch(error=>reply({ok:false,error:error.message,needsUser:!!error.needsUser}));return true;
+    operation.then(data=>reply({ok:true,data})).catch(error=>reply({ok:false,error:error.message,needsUser:!!error.needsUser,checks:error.checks || []}));return true;
   }
   if(message?.type!=='VPC_RPC' || sender.id!==chrome.runtime.id)return;
   (async()=>{
@@ -32,6 +45,23 @@ chrome.runtime.onMessage.addListener((message,sender,reply)=>{
     if(message.action==='stop')await VisualDetailManager.cancel(id);
     const tab=await connect(id);
     if(message.action==='context')return {tabId:id,url:tab.url,title:tab.title};
+    if(message.action==='checkSetup'){
+      const c=message.payload.config;
+      const source=await chrome.tabs.sendMessage(id,{type:'VPC_CONTENT',action:'checkList',payload:c});
+      const checks=source?.data?.checks || [{id:'list',label:'职位列表',status:'fail',message:source?.error || '未连接'}];
+      if(!source?.ok || !source.data?.checks?.some(c=>c.id==='list' && c.status==='pass'))return {checks};
+      if(!c.fields.some(f=>f.scope==='detail'))return {checks};
+      try{
+        const entry=await resolveEntry(id,tab,c);
+        checks.push({id:'entry',label:'详情入口',status:'pass',message:entry.url});
+        if(new URL(entry.url).origin!==c.detail.origin)throw new Error('详情网站与链接不一致，请重新获取详情链接。');
+        const sample=await VisualDetailManager.sample(id,{config:{...c,detail:{...c.detail,sampleUrl:entry.url}},sampleTabId:message.payload.sampleTabId});
+        const [result]=await chrome.scripting.executeScript({target:{tabId:sample.tabId},func:VisualDetail.read,args:[{fields:c.fields.filter(f=>f.scope==='detail'),detail:c.detail,expected:source.data.data[c.detail.identityField],timeout:Math.min(c.options.timeout,5000),url:entry.url}]});
+        if(result?.result?.checks?.length)checks.push(...result.result.checks);
+        else checks.push({id:'detail-page',label:'详情页面',status:'fail',message:result?.result?.error || '无法读取详情'});
+        return {checks,sampleTabId:sample.tabId};
+      }catch(error){const linked=checks.some(c=>c.id==='entry' && c.status==='pass');checks.push({id:linked?'detail-page':'entry',label:linked?'详情页面':'详情入口',status:'fail',message:error.message});return {checks};}
+    }
     if(message.action==='autoDetail')return VisualDetailManager.prepare(id,message.payload);
     if(message.action==='sampleForPick'){
       const state=await chrome.tabs.sendMessage(id,{type:'VPC_CONTENT',action:'state'});
@@ -39,17 +69,7 @@ chrome.runtime.onMessage.addListener((message,sender,reply)=>{
       const sample=await VisualDetailManager.sample(id,message.payload);await connect(sample.tabId);return sample;
     }
     if(message.action==='resolveEntry'){
-      if(message.payload.detail?.entryInvalid || (message.payload.detail?.sampleUrl && !VisualDetect.url(message.payload.detail.sampleUrl,tab.url)))await VisualDetailManager.cancel(id);
-      const response=await chrome.tabs.sendMessage(id,{type:'VPC_CONTENT',action:'entry',payload:message.payload});
-      if(!response?.ok)throw new Error(response?.error || '请先识别列表。');
-      const publicUrl=VisualDetect.url(response.data.link,tab.url);
-      if(publicUrl)return {...response.data,url:publicUrl};
-      if(!message.payload.detail?.clickSelector)throw new Error('没有识别到职位入口。请点一次职位标题，或取消“同时读取职位详情”。');
-      const [result]=await chrome.scripting.executeScript({target:{tabId:id},world:'MAIN',func:VisualDetail.capture,args:[{rowSelector:response.data.rowSelector,clickSelector:message.payload.detail.clickSelector}]});
-      if(!result?.result?.ok)throw new Error(result?.result?.error || '没有找到详情链接。');
-      const resolved=VisualDetect.url(result.result.url,tab.url);
-      if(!resolved){const e=new Error('未找到有效职位地址。请点“重新获取详情链接”，或补点一个职位标题。');e.needsEntry=true;throw e;}
-      return {...response.data,url:resolved};
+      return resolveEntry(id,tab,message.payload);
     }
     if(message.action==='pick')await chrome.tabs.update(id,{active:true});
     const response=await chrome.tabs.sendMessage(id,{type:'VPC_CONTENT',action:message.action,payload:message.payload});

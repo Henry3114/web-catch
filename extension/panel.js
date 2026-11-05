@@ -10,9 +10,9 @@ const api=async(action,payload)=>{
   // Invoke permission request directly within the Start click, before any await.
   let grant;
   const detailPick=action==='pick' && payload?.role==='detail' && payload.config?.detail?.mode==='page';
-  const permissionConfig=action==='autoDetail' || detailPick?payload.config:payload;
+  const permissionConfig=action==='autoDetail' || action==='checkSetup' || detailPick?payload.config:payload;
   if(detailPick && !permissionConfig.detail.origin)throw new Error('请先点“自动读取详情”，工作台会打开详情样例，再点选这个字段。');
-  if(action==='autoDetail' || detailPick || (action==='start' && payload.detail?.mode==='page' && payload.fields.some(f=>f.scope==='detail')))
+  if(action==='autoDetail' || (action==='checkSetup' && payload.config.fields.some(f=>f.scope==='detail') && payload.config.detail.origin) || detailPick || (action==='start' && payload.detail?.mode==='page' && payload.fields.some(f=>f.scope==='detail')))
     grant=chrome.permissions.request({origins:[...new Set([pattern(permissionConfig.match.origin),pattern(permissionConfig.detail.origin)])]});
   if(grant && !await grant)throw new Error('未获得网站访问权限，尚未开始采集。');
   await bindingsReady;
@@ -35,7 +35,7 @@ const api=async(action,payload)=>{
   if(detail && action!=='detailContext' && tabId==null)throw new Error('请先打开一个详情页，点击工具栏图标，再点“连接详情样例”。');
   const response=await chrome.runtime.sendMessage({type:'VPC_RPC',tabId,action:action==='detailContext'?'context':action,payload});
   if(!response?.ok){const error=new Error(response?.error || '请在目标网页点一次工具栏图标。');error.needsEntry=!!response?.needsEntry;throw error;}
-  if(action==='autoDetail' && response.data.sampleTabId!=null){detailTabId=response.data.sampleTabId;await chrome.storage.session.set({[bindingKey]:{list:listTabId,detail:detailTabId}});}
+  if(['autoDetail','checkSetup'].includes(action) && response.data.sampleTabId!=null){detailTabId=response.data.sampleTabId;await chrome.storage.session.set({[bindingKey]:{list:listTabId,detail:detailTabId}});}
   if(action==='detailContext' && response.data.tabId===listTabId)throw new Error('这还是列表标签页。请先在新标签页打开一个职位详情，点击该页工作台图标，再连接详情样例。');
   if(action==='context' || action==='detailContext') {
     if(detail)detailTabId=response.data.tabId;else listTabId=response.data.tabId;

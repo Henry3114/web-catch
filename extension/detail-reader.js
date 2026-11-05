@@ -30,9 +30,9 @@ globalThis.VisualDetail={
     const norm=v=>String(v ?? '').replace(/\s+/g,'');
     const visible=el=>!!el && !!el.getClientRects().length && getComputedStyle(el).visibility!=='hidden' && getComputedStyle(el).display!=='none';
     const target=new URL(url);
-    let previous='',since=0,until=Date.now()+timeout;
+    let previous='',since=0,until=Date.now()+timeout,checks=[];
     const read=f=>{
-      const el=document.querySelector(f.selector);if(!visible(el))return '';
+      if(!f.selector)return '';let el;try{el=document.querySelector(f.selector);}catch{return '';}if(!visible(el))return '';
       if(f.type==='text') {
         let text=(el.innerText || '').trim();
         if((f.section || 'auto')!=='whole' && /^(工作职责|岗位职责|职位职责|工作内容|岗位要求|任职要求|任职资格|职位要求)$/.test(f.name || '')){for(let parent=el.parentElement,depth=0;parent && parent!==document.body && depth<3;parent=parent.parentElement,depth++){const nearby=(parent.innerText || '').trim();if(/(?:工作职责|岗位职责|任职要求|岗位要求)\s*[:：]/.test(nearby) && nearby.length<30000){text=nearby;break;}}}
@@ -49,16 +49,18 @@ globalThis.VisualDetail={
           return {ok:false,needsUser:true,error:'详情页要求登录或人工验证。请在已打开的详情页处理，再返回列表继续。'};
         if(location.origin!==target.origin || location.pathname!==target.pathname || location.search!==target.search)throw new Error('详情跳转到了不同页面，已暂停，避免错配。');
         const values=Object.fromEntries(fields.map(f=>[f.id,read(f)]));
-        const identityOK=!detail.identitySelector || (norm(expected) && norm(read({selector:detail.identitySelector,type:detail.identityType || 'text'}))===norm(expected));
+        const actual=detail.identitySelector?read({selector:detail.identitySelector,type:detail.identityType || 'text'}):'';
+        const identityOK=!detail.identitySelector || (norm(expected) && norm(actual)===norm(expected));
+        checks=[{id:'detail-page',label:'详情页面',status:document.readyState==='complete'?'pass':'fail',message:document.readyState==='complete'?'已加载':'尚未加载完成'}, {id:'identity',label:'职位对应关系',status:detail.identitySelector?(identityOK?'pass':'fail'):'pending',message:detail.identitySelector?(identityOK?'列表和详情标识一致':'标识不匹配：列表“'+String(expected || '空').slice(0,100)+'”；详情“'+actual.slice(0,100)+'”。请检查标识字段。'):'未启用标识核对，按链接对应'},...fields.map(f=>({id:'field:'+f.id,label:f.name,status:values[f.id]?'pass':'fail',message:values[f.id]?'已读取：'+values[f.id].slice(0,100):'没有读到内容，请重新点选本字段，或检查正文分段设置。'}))];
         // Require all configured detail fields. Never silently finish with blank detail columns.
         const ready=document.readyState==='complete' && identityOK && fields.every(f=>values[f.id]);
         const signature=JSON.stringify(values);
-        if(ready) {if(signature!==previous){previous=signature;since=Date.now();}if(Date.now()-since>=800)return {ok:true,data:{...values,_detailUrl:location.href}};}
+        if(ready) {if(signature!==previous){previous=signature;since=Date.now();}if(Date.now()-since>=800)return {ok:true,data:{...values,_detailUrl:location.href},checks};}
         else {previous='';since=0;}
         await new Promise(resolve=>setTimeout(resolve,200));
       }
-      throw new Error('详情字段为空、未加载或标识不匹配。请在详情样例中重新点选；已有结果保留。');
-    }catch(error){return {ok:false,error:error.message};}
+      throw new Error(checks.filter(c=>c.status==='fail').map(c=>c.label+'：'+c.message).join('\n') || '详情内容未稳定，请稍后重试。');
+    }catch(error){return {ok:false,error:error.message,checks};}
   },
   capture:async function({rowSelector,clickSelector}) {
     const row=document.querySelector(rowSelector),node=row && (clickSelector===':scope'?row:row.querySelector(clickSelector));

@@ -56,7 +56,7 @@ globalThis.VisualDetailManager=(()=>{
       const reply=result?.result;
       if(!reply?.ok){
         if(reply?.needsUser){job.keep=true;await chrome.tabs.update(id,{active:true});const error=new Error(reply.error);error.needsUser=true;throw error;}
-        throw new Error(reply?.error || '详情页没有响应。');
+        const error=new Error(reply?.error || '详情页没有响应。');error.checks=reply?.checks || [];throw error;
       }
       return reply.data;
     }catch(error){if(!job.keep)await close(listId);throw error;}

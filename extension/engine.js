@@ -179,7 +179,7 @@
         }
         await emit(state.records.length>=c.options.count ? `已完成 ${Math.min(state.records.length,c.options.count)} 条，可以导出 Excel。` : `已采集 ${state.records.length} 条；没有更多记录或达到翻页上限，可导出已有结果。`,'done');
       } catch(error) {
-        state.needsUser=!!error.needsUser;
+        state.needsUser=!!error.needsUser;state.validation=error.checks || [];
         if(running) state.errors.push({url:url(),message:error.message});
         await emit(error.message,'paused');
       } finally {running=false;state.pending=null;await emit();}
@@ -291,12 +291,18 @@
       });
     }
     function suggest(input){if(running)throw new Error('请先暂停采集，再识别页面。');return VisualDetect.list(root,input,url());}
+    function checkList(c){
+      let rows=[];try{rows=items(c);}catch{}
+      const checks=[{id:'list',label:'职位列表',status:rows.length?'pass':'fail',message:rows.length?'找到 '+rows.length+' 条记录':'未找到列表，请重新识别或点选整条记录。'}],data={};
+      for(const f of c.fields.filter(f=>f.scope==='list')){try{data[f.id]=rows[0] && f.selector?value(rows[0],f):'';}catch{data[f.id]='';}checks.push({id:'field:'+f.id,label:f.name,status:data[f.id]?'pass':'fail',message:data[f.id]?'已读取：'+data[f.id].slice(0,100):'未读到内容，请重新点选此字段。'});}
+      return {checks,data};
+    }
     function entry(c){
       const row=items(c)[0];if(!row)throw new Error('没有找到职位列表，请先点“自动识别页面”。');
       const data=listValues(row,c);
       return {link:data[c.detail?.linkField] || '',rowSelector:VisualLocator.unique(row,document),title:data['auto-title'] || data[c.detail?.identityField] || ''};
     }
-    return {start,stop,clear,preview,repair,pick,snapshot,restore,suggest,entry,sample:input=>detailValues(validate(input)),cancelPick:()=>cancelledPick?.()};
+    return {start,stop,clear,preview,repair,pick,snapshot,restore,suggest,entry,checkList,sample:input=>detailValues(validate(input)),cancelPick:()=>cancelledPick?.()};
   }
   globalThis.VisualEngine={create,validate};
 })();
