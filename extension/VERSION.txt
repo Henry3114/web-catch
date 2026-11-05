@@ -1,0 +1,3 @@
+网页采集工作台 0.3.5
+此文件、manifest.json 与其它扩展文件应放在 Chrome 实际加载的同一个 extension 目录。
+覆盖后到 chrome://extensions 重新加载，并刷新职位列表与详情页。

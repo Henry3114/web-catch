@@ -10,7 +10,7 @@ async function connect(tabId){
   if(!valid(saved))saved=Object.entries(all).filter(([key,v])=>key.startsWith('vpc.archive.') && valid(v)).map(([,v])=>v).sort((a,b)=>b.updatedAt-a.updatedAt)[0];
   const reply=await chrome.tabs.sendMessage(tabId,{type:'VPC_CONTENT',action:'init',tabId,saved:valid(saved)?saved:null});
   if(!reply?.ok)throw new Error(reply?.error || '无法连接网页，请刷新后重试。');
-  return tab;
+  return {...tab,contentVersion:reply.data?.buildVersion || '旧版未标识'};
 }
 async function resolveEntry(id,tab,config){
       if(config.detail?.entryInvalid || (config.detail?.sampleUrl && !VisualDetect.url(config.detail.sampleUrl,tab.url)))await VisualDetailManager.cancel(id);
@@ -44,7 +44,7 @@ chrome.runtime.onMessage.addListener((message,sender,reply)=>{
     if(id==null)throw new Error('未找到当前网页。');
     if(message.action==='stop')await VisualDetailManager.cancel(id);
     const tab=await connect(id);
-    if(message.action==='context')return {tabId:id,url:tab.url,title:tab.title};
+    if(message.action==='context')return {tabId:id,url:tab.url,title:tab.title,contentVersion:tab.contentVersion};
     if(message.action==='checkSetup'){
       const c=message.payload.config;
       const source=await chrome.tabs.sendMessage(id,{type:'VPC_CONTENT',action:'checkList',payload:c});

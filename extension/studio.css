@@ -7,3 +7,4 @@
 #advanced-settings:not([open]) + .results .manual-controls{display:none}
 #picker-help{position:sticky;bottom:8px;z-index:10;padding:10px;border:1px solid #82b6a6;border-radius:8px;background:#e5f2ed;box-shadow:0 3px 16px #173e3b22}#picker-help button{margin:6px 0 0 8px}.pick-state{margin-top:6px;white-space:pre-wrap}
 #setup-checks p{margin:5px 0;overflow-wrap:anywhere;white-space:pre-wrap}.check-pass{color:#157047}.check-fail{color:#ad3023}.check-pending{color:#6a807a}
+.action-status{font-size:11px;line-height:1.5;margin:3px 0 7px;overflow-wrap:anywhere;flex-basis:100%}#version-info{white-space:pre-wrap;overflow-wrap:anywhere;margin-bottom:8px}

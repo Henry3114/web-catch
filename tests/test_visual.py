@@ -691,5 +691,24 @@ class VisualCollectorTests(unittest.TestCase):
         self.assertTrue(any(c['id']=='field:requirements' and c['status']=='fail' for c in result['checks']))
 
 
+    def test_each_action_shows_local_evidence_and_invalidates_changed_selection(self):
+        self.assertIn('√',self.page.locator('[data-action-status="connect"]').inner_text())
+        self.assertIn('○',self.page.locator('[data-action-status="pick-list"]').inner_text())
+        self.page.locator('#pick-list').click();target=self.page.locator('#records .name').first;target.hover();target.click()
+        self.assertIn('√',self.page.locator('[data-action-status="pick-list"]').inner_text())
+        self.page.locator('#list-selector').evaluate("el=>{el.value='.missing';el.dispatchEvent(new Event('input',{bubbles:true}));}")
+        self.assertIn('○',self.page.locator('[data-action-status="pick-list"]').inner_text())
+        self.page.locator('#count').fill('0');self.assertIn('×',self.page.locator('[data-action-status="count"]').inner_text())
+
+    def test_version_banner_identifies_old_installed_manifest(self):
+        self.page.evaluate("""async()=>{
+          const el=document.createElement('main');el.id='version-test';document.body.append(el);
+          window.versionStudio=VisualStudio.create({element:el,installedVersion:'0.3.3',extensionId:'test-id',storage:{get:async()=>({}),set:async()=>{}},api:async action=>action==='context'?{title:'列表',url:location.href,contentVersion:'0.3.3'}:{records:[],status:'idle',running:false,config:null,message:''}});await versionStudio.ready;
+        }""")
+        banner=self.page.locator('#version-test #version-info').inner_text()
+        self.assertIn('界面 v0.3.5',banner);self.assertIn('扩展 v0.3.3',banner);self.assertIn('版本不一致',banner)
+        self.page.evaluate('versionStudio.dispose()')
+
+
 if __name__=='__main__':
     unittest.main()

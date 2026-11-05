@@ -52,7 +52,7 @@
     let state = {status:'idle', message:'请选择列表，再添加字段。', config:null, records:[], errors:[], page:1, pending:null, source:url()};
     const get = selector => selector === ':scope' ? root : root.querySelector(selector);
     const items = c => [...root.querySelectorAll(c.listSelector)].filter(visible);
-    const snapshot = () => structuredClone({...state, running});
+    const snapshot = () => structuredClone({...state, running,buildVersion:'0.3.5'});
     async function emit(message, status) {
       if (message != null) state.message = message;
       if (status) state.status = status;
@@ -295,6 +295,9 @@
       let rows=[];try{rows=items(c);}catch{}
       const checks=[{id:'list',label:'职位列表',status:rows.length?'pass':'fail',message:rows.length?'找到 '+rows.length+' 条记录':'未找到列表，请重新识别或点选整条记录。'}],data={};
       for(const f of c.fields.filter(f=>f.scope==='list')){try{data[f.id]=rows[0] && f.selector?value(rows[0],f):'';}catch{data[f.id]='';}checks.push({id:'field:'+f.id,label:f.name,status:data[f.id]?'pass':'fail',message:data[f.id]?'已读取：'+data[f.id].slice(0,100):'未读到内容，请重新点选此字段。'});}
+      if(c.pagination?.mode==='none')checks.push({id:'pagination',label:'翻页设置',status:'pass',message:'只采当前列表，不自动翻页。'});
+      else if(c.pagination?.mode==='scroll')checks.push({id:'pagination',label:'翻页设置',status:'pending',message:'已选择滚动加载，加载效果需运行时验证。'});
+      else {let button;try{button=root.querySelector(c.pagination?.selector);}catch{}checks.push({id:'pagination',label:'翻页设置',status:button && visible(button)?'pass':'fail',message:button && visible(button)?'已找到翻页按钮；实际翻页效果尚未验证。':'未找到翻页按钮，请重新点选。'});}
       return {checks,data};
     }
     function entry(c){

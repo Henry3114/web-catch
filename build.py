@@ -10,6 +10,7 @@ EXT = ROOT / 'extension'
 
 def build():
     manifest = json.loads((EXT / 'manifest.json').read_text())
+    (EXT / 'VERSION.txt').write_text('网页采集工作台 '+manifest['version']+'\n此文件、manifest.json 与其它扩展文件应放在 Chrome 实际加载的同一个 extension 目录。\n覆盖后到 chrome://extensions 重新加载，并刷新职位列表与详情页。\n',encoding='utf-8')
     assert manifest['name'] == '网页采集工作台 · 独立试用版'
     for name in [manifest['background']['service_worker'], manifest['side_panel']['default_path'], manifest['options_ui']['page']]:
         assert (EXT / name).is_file()

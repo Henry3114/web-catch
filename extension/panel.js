@@ -43,7 +43,7 @@ const api=async(action,payload)=>{
   }
   return response.data;
 };
-VisualStudio.create({element:document.querySelector('#app'),api,storage:{
+VisualStudio.create({element:document.querySelector('#app'),api,installedVersion:chrome.runtime.getManifest?.().version || '',extensionId:chrome.runtime.id,storage:{
   get:async()=> (await chrome.storage.local.get('vpc.templates.v1'))['vpc.templates.v1'] || {},
   set:async templates=>chrome.storage.local.set({'vpc.templates.v1':templates}),
   getDraft:async()=>{await bindingsReady;return (await chrome.storage.local.get(bindingKey+'.draft'))[bindingKey+'.draft'];},
