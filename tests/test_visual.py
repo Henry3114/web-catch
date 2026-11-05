@@ -483,5 +483,86 @@ class VisualCollectorTests(unittest.TestCase):
         self.assertNotIn('querySelector',message)
 
 
+    def test_capture_handles_blank_window_then_async_location_navigation(self):
+        self.page.add_script_tag(path=str(ROOT/'extension/detail-reader.js'))
+        for expression in ["popup.location=url", "popup.location.href=url", "popup.location.assign(url)", "popup.location.replace(url)"]:
+            self.page.evaluate("""expression=>{
+              let el=document.querySelector('#late-entry');if(!el){el=document.createElement('div');el.id='late-entry';el.innerHTML='<span class="entry">职位标题</span>';document.body.prepend(el);}
+              const url='https://jobs.example/detail/actual';
+              el.querySelector('.entry').onclick=()=>{const popup=window.open('','_blank');popup.focus();setTimeout(()=>{if(expression==='popup.location=url')popup.location=url;else if(expression==='popup.location.href=url')popup.location.href=url;else if(expression==='popup.location.assign(url)')popup.location.assign(url);else popup.location.replace(url);},250);};
+              const original=window.open;window.lateResult=null;VisualDetail.capture({rowSelector:'#late-entry',clickSelector:'.entry'}).then(r=>{lateResult={...r,restored:window.open===original};});
+            }""",expression)
+            self.tick('lateResult!==null')
+            result=self.page.evaluate('lateResult')
+            self.assertEqual(result['url'],'https://jobs.example/detail/actual');self.assertTrue(result['restored'])
+
+    def test_capture_does_not_turn_window_name_into_relative_url(self):
+        self.page.add_script_tag(path=str(ROOT/'extension/detail-reader.js'))
+        self.page.evaluate("""()=>{
+          const el=document.createElement('div');el.id='target-entry';el.innerHTML='<span class="entry">职位标题</span>';document.body.prepend(el);
+          el.querySelector('.entry').onclick=()=>window.open('_blank');
+          const original=window.open;window.targetResult=null;VisualDetail.capture({rowSelector:'#target-entry',clickSelector:'.entry'}).then(r=>{targetResult={...r,restored:window.open===original};});
+        }""")
+        self.tick('targetResult!==null');result=self.page.evaluate('targetResult')
+        self.assertFalse(result['ok']);self.assertNotIn('url',result);self.assertTrue(result['restored'])
+
+    def test_capture_can_use_valid_url_in_reversed_window_open_arguments(self):
+        self.page.add_script_tag(path=str(ROOT/'extension/detail-reader.js'))
+        result=self.page.evaluate("""async()=>{
+          const el=document.createElement('div');el.id='reverse-entry';el.innerHTML='<span class="entry">职位标题</span>';document.body.prepend(el);
+          el.querySelector('.entry').onclick=()=>window.open('_blank','https://jobs.example/detail/actual');
+          return VisualDetail.capture({rowSelector:'#reverse-entry',clickSelector:'.entry'});
+        }""")
+        self.assertEqual(result['url'],'https://jobs.example/detail/actual')
+
+    def test_blank_detail_page_never_requests_manual_text_selection(self):
+        page=self.context.new_page()
+        page.route('**/empty-detail',lambda route:route.fulfill(content_type='text/html; charset=utf-8',body='<html><head><title></title></head><body></body></html>'))
+        page.goto(f'http://localhost:{self.server.server_port}/empty-detail');page.add_script_tag(path=str(ROOT/'extension/detect.js'))
+        result=page.evaluate('VisualDetect.details({timeout:1000})')
+        self.assertFalse(result['ok']);self.assertTrue(result['invalidPage']);self.assertFalse(result.get('needsSelection',False))
+        self.assertIn('重新获取详情链接',result['error']);page.close()
+
+    def test_reserved_window_target_links_are_rejected_in_detection_and_fields(self):
+        result=self.page.evaluate("""()=>{
+          const base=location.href,inputs=['_blank','_self','/pc/my/_blank','/pc/my/%5Fblank','about:blank','#'];
+          document.querySelectorAll('#records .name').forEach((el,i)=>{const a=document.createElement('a');a.href='_blank';a.className='name';a.textContent=el.textContent;el.replaceWith(a);});
+          const suggested=VisualDemo.engine.suggest(VisualStudio.defaults());
+          document.querySelectorAll('#records .detail-link').forEach(a=>a.href='_blank');const c=VisualDemo.example();const rows=VisualDemo.engine.preview(c).records;
+          return {links:inputs.map(raw=>VisualDetect.url(raw,base)),sample:suggested.sampleUrl,fields:suggested.config.fields.map(f=>f.id),rows};
+        }""")
+        self.assertEqual(result['links'],['']*6);self.assertEqual(result['sample'],'');self.assertNotIn('auto-url',result['fields']);self.assertTrue(all(not row['url'] for row in result['rows']))
+
+    def test_old_blank_sample_draft_shows_recover_link_instead_of_select_description(self):
+        self.page.evaluate("""()=>{
+          const c=VisualDemo.example();c.fields=c.fields.filter(f=>f.scope==='list');c.quickDetails=true;c.detail={mode:'page',origin:location.origin,sampleUrl:new URL('/pc/my/_blank',location.href).href,linkField:'url',clickSelector:'.name'};
+          VisualDemo.studio.loadConfig(c);
+        }""")
+        self.page.locator('#advanced-settings').evaluate('el=>el.open=false')
+        self.assertEqual(self.page.locator('#guide-action').inner_text(),'重新获取详情链接')
+        self.assertNotIn('点选职位描述',self.page.locator('#guide-hint').inner_text())
+        self.page.locator('#guide-action').click()
+        self.page.wait_for_function("document.querySelector('#guide-action').textContent==='自动读取详情'")
+        self.assertNotIn('_blank',self.page.evaluate('VisualDemo.studio.getConfig().detail.sampleUrl'))
+
+
+    def test_recovered_js_entry_stops_using_empty_cached_link_for_deduplication(self):
+        self.page.evaluate("""async()=>{
+          VisualDemo.studio.dispose();document.querySelector('#app').replaceChildren();
+          const c=VisualDemo.example();c.fields=c.fields.filter(f=>f.scope==='list');c.quickDetails=true;c.detail={mode:'page',origin:location.origin,sampleUrl:new URL('/pc/my/_blank',location.href).href,linkField:'url',clickSelector:'.name'};
+          window.recoveryStudio=VisualStudio.create({element:document.querySelector('#app'),storage:{get:async()=>({}),getDraft:async()=>c,set:async()=>{}},api:async action=>{
+            if(action==='context')return {title:'职位列表',url:location.href};
+            if(action==='state')return {records:[],status:'idle',running:false,config:null,message:''};
+            if(action==='resolveEntry')return {link:'',url:'https://jobs.example/actual',title:'演示岗位 01'};
+          }});await recoveryStudio.ready;
+        }""")
+        self.page.locator('#guide-action').click()
+        self.page.wait_for_function("document.querySelector('#guide-action').textContent==='自动读取详情'")
+        config=self.page.evaluate('recoveryStudio.getConfig()')
+        self.assertEqual(config['detail']['linkField'],'');self.assertNotIn('url',config['keyFields'])
+        self.assertEqual(config['detail']['origin'],'https://jobs.example')
+        self.page.evaluate('recoveryStudio.dispose()')
+
+
 if __name__=='__main__':
     unittest.main()

@@ -34,19 +34,23 @@ chrome.runtime.onMessage.addListener((message,sender,reply)=>{
     if(message.action==='context')return {tabId:id,url:tab.url,title:tab.title};
     if(message.action==='autoDetail')return VisualDetailManager.prepare(id,message.payload);
     if(message.action==='resolveEntry'){
+      if(message.payload.detail?.entryInvalid || (message.payload.detail?.sampleUrl && !VisualDetect.url(message.payload.detail.sampleUrl,tab.url)))await VisualDetailManager.cancel(id);
       const response=await chrome.tabs.sendMessage(id,{type:'VPC_CONTENT',action:'entry',payload:message.payload});
       if(!response?.ok)throw new Error(response?.error || '请先识别列表。');
-      if(response.data.link)return {...response.data,url:response.data.link};
+      const publicUrl=VisualDetect.url(response.data.link,tab.url);
+      if(publicUrl)return {...response.data,url:publicUrl};
       if(!message.payload.detail?.clickSelector)throw new Error('没有识别到职位入口。请点一次职位标题，或取消“同时读取职位详情”。');
       const [result]=await chrome.scripting.executeScript({target:{tabId:id},world:'MAIN',func:VisualDetail.capture,args:[{rowSelector:response.data.rowSelector,clickSelector:message.payload.detail.clickSelector}]});
       if(!result?.result?.ok)throw new Error(result?.result?.error || '没有找到详情链接。');
-      return {...response.data,url:result.result.url};
+      const resolved=VisualDetect.url(result.result.url,tab.url);
+      if(!resolved){const e=new Error('未找到有效职位地址。请点“重新获取详情链接”，或补点一个职位标题。');e.needsEntry=true;throw e;}
+      return {...response.data,url:resolved};
     }
     if(message.action==='pick')await chrome.tabs.update(id,{active:true});
     const response=await chrome.tabs.sendMessage(id,{type:'VPC_CONTENT',action:message.action,payload:message.payload});
     if(!response?.ok)throw new Error(response?.error || '网页没有响应。');
     return response.data;
-  })().then(data=>reply({ok:true,data})).catch(error=>reply({ok:false,error:error.message,needsUser:!!error.needsUser}));
+  })().then(data=>reply({ok:true,data})).catch(error=>reply({ok:false,error:error.message,needsUser:!!error.needsUser,needsEntry:!!error.needsEntry}));
   return true;
 });
 chrome.tabs.onUpdated.addListener((id,info)=>{

@@ -103,6 +103,10 @@ body{background:#eaf0ec}.demo-layout{display:grid;grid-template-columns:minmax(5
 "use strict";
 (() => {
   if(globalThis.VisualDetect)return;
+  function url(raw,base){
+    if(raw==null || !String(raw).trim() || /^\s*(?:#|_(?:blank|self|top|parent)\s*$)/i.test(String(raw)))return '';
+    try{const u=new URL(String(raw),base);if(!/^https?:$/.test(u.protocol) || /(?:^|\/)_(?:blank|self|top|parent)\/?$/i.test(decodeURIComponent(u.pathname)))return '';return u.href;}catch{return '';}
+  }
   function list(root,input,url) {
     const visible=VisualLocator.visible;
     const text=el=>(el?.innerText || '').trim();
@@ -159,7 +163,7 @@ body{background:#eaf0ec}.demo-layout{display:grid;grid-template-columns:minmax(5
     }
     const link=titleElement && (titleElement.closest('a[href]') || titleElement.querySelector('a[href]'));
     let sampleUrl='';
-    if(link && first.contains(link))try{const raw=link.getAttribute('href') || '',target=new URL(raw,url);if(raw.trim() && /^https?:$/.test(target.protocol) && !raw.startsWith('#') && target.href!==new URL(url).href)sampleUrl=target.href;}catch{}
+    if(link && first.contains(link)){const target=VisualDetect.url(link.getAttribute('href'),url);if(target && target!==new URL(url).href)sampleUrl=target;}
     c.detail={mode:'page',origin:sampleUrl?new URL(sampleUrl).origin:'',linkField:'',clickSelector:titleElement?VisualLocator.unique(titleElement,first):'',identityField:'',identitySelector:'',identityType:'text',waitField:'',allowSame:false};
     if(sampleUrl){c.fields.push({id:'auto-url',name:'职位链接',scope:'list',type:'href',selector:VisualLocator.unique(link,first)});c.detail.linkField='auto-url';c.keyFields=['auto-url'];}
     const next=[...root.querySelectorAll('button,a,[role="button"],.btn-next,.next')].find(el=>visible(el) && !el.disabled && el.getAttribute('aria-disabled')!=='true' && !/disabled/.test(el.className) && ((/^(下一页|下页|下一页\s*[>›»→])$/.test(text(el)) || (/^[>›»→]$/.test(text(el)) && el.closest('.pagination,.pager,[class*=pagination],[class*=pager]'))) || /^(下一页|Next page)$/i.test(el.getAttribute('aria-label') || '') || el.matches('.btn-next')));
@@ -194,9 +198,11 @@ body{background:#eaf0ec}.demo-layout{display:grid;grid-template-columns:minmax(5
       }
       await new Promise(resolve=>setTimeout(resolve,200));
     }
-    return {ok:false,needsSelection:true,error:'详情页已打开。只需点一次“点选职位描述”，选择正文即可。'};
+    const content=text(document.body);
+    if(content.length<30 || /(?:404|page not found|页面不存在|页面未找到|该网页无法正常运作)/i.test(content.slice(0,500)))return {ok:false,invalidPage:true,error:'详情页没有加载出职位内容。请回工作台点“重新获取详情链接”。'};
+    return {ok:false,needsSelection:true,error:'页面有内容，但未识别出职位正文。点“点选职位描述”，选择正文即可。'};
   }
-  globalThis.VisualDetect={list,details};
+  globalThis.VisualDetect={list,details,url};
 })();
 
 </script><script>
@@ -277,6 +283,7 @@ body{background:#eaf0ec}.demo-layout{display:grid;grid-template-columns:minmax(5
       const target = field.type === 'href' ? (el.closest('a[href]') || el.querySelector('a[href]')) : (el.matches('img') ? el : el.querySelector('img'));
       const raw = target?.getAttribute(field.type) || '';
       if (!raw) return '';
+      if(field.type==='href')return VisualDetect.url(raw,url());
       const resolved = new URL(raw, url());
       return /^https?:$/.test(resolved.protocol) ? resolved.href : '';
     }
@@ -619,7 +626,7 @@ body{background:#eaf0ec}.demo-layout{display:grid;grid-template-columns:minmax(5
       <p class="footer">模板和结果只保存在本机。点选只定位页面元素，不读取密码或Cookie、不绕过访问验证。支持列表/表格、同页详情和进入详情页批量采集。</p>`;
     const $=id=>element.querySelector('#'+id);
     const notify=(message,error=false)=>{$('notice').textContent=message;$('notice').classList.toggle('error',error);};
-    const safe=fn=>async(...args)=>{try{return await fn(...args);}catch(error){notify(error.message,true);}finally{persistDraft();}};
+    const safe=fn=>async(...args)=>{try{return await fn(...args);}catch(error){if(error.needsEntry){manualDetail=false;autoSample=null;config.detail={...config.detail,sampleUrl:'',entryInvalid:true};config.fields=config.fields.filter(f=>f.scope!=='detail');form();}notify(error.message,true);}finally{persistDraft();}};
     function download(data,name,type){const url=URL.createObjectURL(new Blob([data],{type}));const a=document.createElement('a');a.href=url;a.download=name;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),60000);}
     function table(records,fields){
       $('preview-table').replaceChildren();
@@ -733,6 +740,7 @@ body{background:#eaf0ec}.demo-layout{display:grid;grid-template-columns:minmax(5
       if(!context)return {action:'connect',title:'先打开要采集的职位列表',hint:'切到职位列表，点工具栏工作台图标，再点“连接列表页”。',button:'连接列表页'};
       readForm();
       if(!config.listSelector || !config.fields.some(f=>f.scope==='list'))return {action:'detect',title:'第1步：自动识别列表和字段',hint:'点一下自动识别。找不到列表时，再点任意一个职位标题。',button:'自动识别页面'};
+      if($('quick-details').checked && (config.detail?.entryInvalid || (config.detail?.sampleUrl && !VisualDetect.url(config.detail.sampleUrl,context.url))))return {action:'entry',title:'需要重新获取职位详情链接',hint:'上次打开的是空白页或无效地址。点下方按钮，工具会从职位列表重新获取真实链接。',button:'重新获取详情链接'};
       if($('quick-details').checked && !config.fields.some(f=>f.scope==='detail' && f.selector)){
         if(manualDetail)return {action:'description',title:'只需补点一下职位描述',hint:'详情页已打开。点下方按钮，再选择包含职责、要求的完整正文。',button:'点选职位描述'};
         if(!config.detail?.sampleUrl)return {action:'entry',title:'补充职位详情入口',hint:'工具还没找到详情链接。点“点一个职位标题”补选入口；只要列表信息可取消“同时读取职位详情”。',button:'自动查找详情入口'};
@@ -750,8 +758,13 @@ body{background:#eaf0ec}.demo-layout{display:grid;grid-template-columns:minmax(5
     }
     async function rememberPrepared(){try{VisualEngine.validate(config);templates[config.id]=structuredClone(config);await storage.set(templates);templateOptions();$('templates').value=config.id;}catch{}}
     async function findEntry(){
-      const entry=await api('resolveEntry',readForm());const url=new URL(entry.url);if(!/^https?:$/.test(url.protocol))throw new Error('未找到普通职位链接，请点一个职位标题。');
-      config.detail={...config.detail,mode:'page',origin:url.origin,sampleUrl:url.href,sampleTitle:entry.title || ''};form();
+      const wasInvalid=config.detail?.entryInvalid || (config.detail?.sampleUrl && !VisualDetect.url(config.detail.sampleUrl,context.url));
+      const entry=await api('resolveEntry',readForm()),resolved=VisualDetect.url(entry.url,context.url);
+      if(!resolved){const e=new Error('没有取得有效职位地址。请重新获取详情链接，或补点一个职位标题。');e.needsEntry=true;throw e;}
+      if(wasInvalid)config.fields=config.fields.filter(f=>f.scope!=='detail');
+      if(!entry.link && config.detail?.linkField){config.keyFields=config.keyFields.filter(id=>id!==config.detail.linkField);config.detail.linkField='';}
+      const url=new URL(resolved);manualDetail=false;
+      config.detail={...config.detail,mode:'page',origin:url.origin,sampleUrl:url.href,sampleTitle:entry.title || '',entryInvalid:false};form();
     }
     async function detectPage(){
       if(latest?.running)throw new Error('请先暂停采集。');

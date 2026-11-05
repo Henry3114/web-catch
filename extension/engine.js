@@ -75,6 +75,7 @@
       const target = field.type === 'href' ? (el.closest('a[href]') || el.querySelector('a[href]')) : (el.matches('img') ? el : el.querySelector('img'));
       const raw = target?.getAttribute(field.type) || '';
       if (!raw) return '';
+      if(field.type==='href')return VisualDetect.url(raw,url());
       const resolved = new URL(raw, url());
       return /^https?:$/.test(resolved.protocol) ? resolved.href : '';
     }

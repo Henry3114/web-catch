@@ -3,6 +3,7 @@ globalThis.VisualDetailManager=(()=>{
   const jobs=new Map();
   const pattern=origin=>{const u=new URL(origin);if(!/^https?:$/.test(u.protocol))throw new Error('仅支持普通网页。');return u.protocol+'//'+u.hostname+'/*';};
   async function permission(origin){if(!await chrome.permissions.contains({origins:[pattern(origin)]}))throw new Error('请返回工作台点“开始”，允许访问列表和详情网站。');}
+  const invalidLink=()=>{const e=new Error('没有取得有效的职位详情链接。请点“重新获取详情链接”。');e.needsEntry=true;return e;};
   async function close(listId,{keep=false}={}){
     const key='vpc.detail-tab.'+listId;
     const id=(await chrome.storage.session.get(key))[key];
@@ -38,13 +39,14 @@ globalThis.VisualDetailManager=(()=>{
       const list=await chrome.tabs.get(listId);
       if(new URL(list.url).origin!==c.match.origin)throw new Error('列表网站已改变。');
       await permission(c.match.origin);await permission(c.detail.origin);check();
-      let url=payload.link;
+      let url=VisualDetect.url(payload.link,list.url);
       if(!url) {
         if(!c.detail.clickSelector)throw new Error('请点选职位标题或配置职位链接字段。');
         const [result]=await chrome.scripting.executeScript({target:{tabId:listId},world:'MAIN',func:VisualDetail.capture,args:[{rowSelector:payload.rowSelector,clickSelector:c.detail.clickSelector}]});
         if(!result?.result?.ok)throw new Error(result?.result?.error || '无法读取详情链接。');
-        url=result.result.url;
+        url=VisualDetect.url(result.result.url,list.url);
       }
+      if(!url)throw invalidLink();
       const target=new URL(url);
       if(!/^https?:$/.test(target.protocol) || target.origin!==c.detail.origin)throw new Error('职位链接不属于已绑定的详情网站，请检查链接字段或详情样例。');
       check();
@@ -65,7 +67,9 @@ globalThis.VisualDetailManager=(()=>{
     const job={cancelled:false};jobs.set(listId,job);
     const check=()=>{if(job.cancelled)throw new Error('详情试读已取消。');};
     try{
-      const list=await chrome.tabs.get(listId),target=new URL(url);
+      const list=await chrome.tabs.get(listId),resolved=VisualDetect.url(url,list.url);
+      if(!resolved)throw invalidLink();
+      const target=new URL(resolved);
       if(new URL(list.url).origin!==c.match.origin || target.origin!==c.detail.origin || !/^https?:$/.test(target.protocol))throw new Error('页面地址改变，请重新识别页面。');
       await permission(c.match.origin);await permission(c.detail.origin);
       const id=await visit(listId,target,c,check);
@@ -75,6 +79,7 @@ globalThis.VisualDetailManager=(()=>{
       if(actual.origin!==target.origin || actual.pathname!==target.pathname || actual.search!==target.search)throw new Error('详情跳转到了其他页面，请手动打开一个职位详情后重试。');
       const r=result?.result;
       if(r?.needsUser){job.keep=true;await chrome.tabs.update(id,{active:true});const e=new Error(r.error);e.needsUser=true;throw e;}
+      if(r?.invalidPage){const e=new Error(r.error);e.needsEntry=true;throw e;}
       if(r?.needsSelection){job.keep=true;await chrome.tabs.update(id,{active:true});return {needsSelection:true,sampleTabId:id,url:target.href,message:r.error};}
       if(!r?.ok)throw new Error(r?.error || '无法读取详情，请手动连接一个详情样例。');
       await close(listId);return r.data;

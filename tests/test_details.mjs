@@ -87,3 +87,19 @@ test('automatic preparation keeps challenge open for user verification',async()=
   const a=setup();a.chrome.scripting.executeScript=async()=>[{result:{ok:false,needsUser:true,error:'人工验证'}}];
   await assert.rejects(a.manager.prepare(1,{config,url:'https://jobs.test/detail/1'}),e=>e.needsUser===true);assert.ok(a.tabs.has(100));await a.manager.close(1);
 });
+test('placeholder URLs never open a sample tab',async()=>{
+  for(const url of ['_blank','https://jobs.test/pc/my/_blank','https://jobs.test/%5Fblank']){
+    const a=setup();await assert.rejects(a.manager.prepare(1,{config,url}),e=>e.needsEntry===true);
+    assert.ok(!a.calls.some(c=>c[0]==='create'));assert.ok(a.tabs.has(2));
+  }
+});
+test('blank detail content returns a recovery action and closes the owned tab',async()=>{
+  const a=setup();a.chrome.scripting.executeScript=async()=>[{result:{ok:false,invalidPage:true,error:'没有加载出职位内容'}}];
+  await assert.rejects(a.manager.prepare(1,{config,url:'https://jobs.test/detail/1'}),e=>e.needsEntry===true);
+  assert.ok(!a.tabs.has(100));assert.ok(a.tabs.has(2));
+  assert.ok(!a.calls.some(c=>c[0]==='update' && c[2].active));
+});
+test('an invalid public href falls back to capturing the real title navigation',async()=>{
+  const a=setup();await a.manager.collect(1,{...payload(),link:'https://list.test/pc/my/_blank',config:{...config,detail:{...config.detail,clickSelector:'.title'}},rowSelector:'.record'});
+  const created=a.calls.find(c=>c[0]==='create');assert.equal(created[1].url,'https://jobs.test/detail/1');await a.manager.close(1);
+});

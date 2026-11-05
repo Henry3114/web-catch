@@ -1,6 +1,10 @@
 "use strict";
 (() => {
   if(globalThis.VisualDetect)return;
+  function url(raw,base){
+    if(raw==null || !String(raw).trim() || /^\s*(?:#|_(?:blank|self|top|parent)\s*$)/i.test(String(raw)))return '';
+    try{const u=new URL(String(raw),base);if(!/^https?:$/.test(u.protocol) || /(?:^|\/)_(?:blank|self|top|parent)\/?$/i.test(decodeURIComponent(u.pathname)))return '';return u.href;}catch{return '';}
+  }
   function list(root,input,url) {
     const visible=VisualLocator.visible;
     const text=el=>(el?.innerText || '').trim();
@@ -57,7 +61,7 @@
     }
     const link=titleElement && (titleElement.closest('a[href]') || titleElement.querySelector('a[href]'));
     let sampleUrl='';
-    if(link && first.contains(link))try{const raw=link.getAttribute('href') || '',target=new URL(raw,url);if(raw.trim() && /^https?:$/.test(target.protocol) && !raw.startsWith('#') && target.href!==new URL(url).href)sampleUrl=target.href;}catch{}
+    if(link && first.contains(link)){const target=VisualDetect.url(link.getAttribute('href'),url);if(target && target!==new URL(url).href)sampleUrl=target;}
     c.detail={mode:'page',origin:sampleUrl?new URL(sampleUrl).origin:'',linkField:'',clickSelector:titleElement?VisualLocator.unique(titleElement,first):'',identityField:'',identitySelector:'',identityType:'text',waitField:'',allowSame:false};
     if(sampleUrl){c.fields.push({id:'auto-url',name:'职位链接',scope:'list',type:'href',selector:VisualLocator.unique(link,first)});c.detail.linkField='auto-url';c.keyFields=['auto-url'];}
     const next=[...root.querySelectorAll('button,a,[role="button"],.btn-next,.next')].find(el=>visible(el) && !el.disabled && el.getAttribute('aria-disabled')!=='true' && !/disabled/.test(el.className) && ((/^(下一页|下页|下一页\s*[>›»→])$/.test(text(el)) || (/^[>›»→]$/.test(text(el)) && el.closest('.pagination,.pager,[class*=pagination],[class*=pager]'))) || /^(下一页|Next page)$/i.test(el.getAttribute('aria-label') || '') || el.matches('.btn-next')));
@@ -92,7 +96,9 @@
       }
       await new Promise(resolve=>setTimeout(resolve,200));
     }
-    return {ok:false,needsSelection:true,error:'详情页已打开。只需点一次“点选职位描述”，选择正文即可。'};
+    const content=text(document.body);
+    if(content.length<30 || /(?:404|page not found|页面不存在|页面未找到|该网页无法正常运作)/i.test(content.slice(0,500)))return {ok:false,invalidPage:true,error:'详情页没有加载出职位内容。请回工作台点“重新获取详情链接”。'};
+    return {ok:false,needsSelection:true,error:'页面有内容，但未识别出职位正文。点“点选职位描述”，选择正文即可。'};
   }
-  globalThis.VisualDetect={list,details};
+  globalThis.VisualDetect={list,details,url};
 })();
