@@ -33,6 +33,11 @@ chrome.runtime.onMessage.addListener((message,sender,reply)=>{
     const tab=await connect(id);
     if(message.action==='context')return {tabId:id,url:tab.url,title:tab.title};
     if(message.action==='autoDetail')return VisualDetailManager.prepare(id,message.payload);
+    if(message.action==='sampleForPick'){
+      const state=await chrome.tabs.sendMessage(id,{type:'VPC_CONTENT',action:'state'});
+      if(state?.data?.running)throw new Error('请先暂停采集，再点选字段。');
+      const sample=await VisualDetailManager.sample(id,message.payload);await connect(sample.tabId);return sample;
+    }
     if(message.action==='resolveEntry'){
       if(message.payload.detail?.entryInvalid || (message.payload.detail?.sampleUrl && !VisualDetect.url(message.payload.detail.sampleUrl,tab.url)))await VisualDetailManager.cancel(id);
       const response=await chrome.tabs.sendMessage(id,{type:'VPC_CONTENT',action:'entry',payload:message.payload});

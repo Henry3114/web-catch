@@ -85,5 +85,35 @@ globalThis.VisualDetailManager=(()=>{
       await close(listId);return r.data;
     }catch(error){if(!job.keep)await close(listId);throw error;}finally{jobs.delete(listId);}
   }
-  return {collect,prepare,close,cancel,pattern};
+  async function sample(listId,{config:c,sampleTabId}){
+    if(jobs.has(listId))throw new Error('正在读取详情。请先暂停，再点选字段。');
+    const job={cancelled:false};jobs.set(listId,job);
+    const check=()=>{if(job.cancelled)throw new Error('已取消点选。');};
+    try{
+      const list=await chrome.tabs.get(listId);
+      if(new URL(list.url).origin!==c.match.origin)throw new Error('列表网站已改变，请重新连接列表。');
+      await permission(c.match.origin);await permission(c.detail.origin);check();
+      let url=VisualDetect.url(c.detail.sampleUrl,list.url),bound=null;
+      if(sampleTabId!=null && sampleTabId!==listId)try{bound=await chrome.tabs.get(sampleTabId);}catch{}
+      if(!url && bound && new URL(bound.url).origin===c.detail.origin)url=VisualDetect.url(bound.url,list.url);
+      if(!url){const e=invalidLink();e.message='还没有详情样例。请先点“自动读取详情”，或在详情页连接样例。';throw e;}
+      const target=new URL(url);
+      if(target.origin!==c.detail.origin)throw new Error('详情样例不属于当前模板，请重新连接详情页。');
+      const matches=tab=>{try{const u=new URL(tab.url);return tab.id!==listId && u.origin===target.origin && u.pathname===target.pathname && u.search===target.search;}catch{return false;}};
+      let tab=bound && matches(bound)?bound:null;
+      if(!tab && chrome.tabs.query){const tabs=await chrome.tabs.query({windowId:list.windowId});tab=tabs.find(matches) || null;}
+      check();
+      const id=tab?tab.id:await visit(listId,target,c,check);
+      const deadline=Date.now()+c.options.timeout;
+      let current=await chrome.tabs.get(id);
+      while(current.status==='loading' && Date.now()<deadline){check();await new Promise(resolve=>setTimeout(resolve,200));current=await chrome.tabs.get(id);}
+      if(current.status==='loading')throw new Error('详情页加载较慢，请稍后再次点选。');
+      if(!matches(current))throw new Error('详情页已跳转，请重新连接一个职位详情。');
+      check();await chrome.tabs.update(id,{active:true});
+      const [ready]=await chrome.scripting.executeScript({target:{tabId:id},func:VisualDetail.readyForPick,args:[{timeout:Math.min(c.options.timeout,10000)}]});
+      check();if(!ready?.result?.ok)throw new Error(ready?.result?.error || '详情页尚未准备好，请刷新详情页重试。');
+      return {tabId:id,url:target.href};
+    }catch(error){if(job.cancelled)await close(listId);throw error;}finally{jobs.delete(listId);}
+  }
+  return {collect,prepare,sample,close,cancel,pattern};
 })();

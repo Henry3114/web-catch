@@ -1,6 +1,17 @@
 "use strict";
 // Both functions are self-contained: Chrome serializes them into the selected tab.
 globalThis.VisualDetail={
+  readyForPick:async function({timeout=10000}={}){
+    const visible=el=>!!el && !!el.getClientRects().length && getComputedStyle(el).visibility!=='hidden';
+    const until=Date.now()+timeout;
+    while(Date.now()<until){
+      if(/安全验证|访问受限|访问异常|验证码|登录/.test(document.title) || ['.geetest_panel','.verify-page','.login-dialog','.sign-dialog','input[type="password"]'].some(s=>[...document.querySelectorAll(s)].some(visible)))return {ok:false,error:'请先在详情页完成登录或验证，再点选这个字段。'};
+      const text=(document.body?.innerText || '').trim();
+      if(document.readyState==='complete' && text.length>=10 && !/^\s*(?:404\b|page not found|页面不存在|页面未找到)/i.test(text))return {ok:true};
+      await new Promise(resolve=>setTimeout(resolve,200));
+    }
+    return {ok:false,error:'详情页还没有加载出正文。请刷新详情页，再点选这个字段。'};
+  },
   read:async function({fields,detail,expected,timeout,url}) {
     const norm=v=>String(v ?? '').replace(/\s+/g,'');
     const visible=el=>!!el && !!el.getClientRects().length && getComputedStyle(el).visibility!=='hidden' && getComputedStyle(el).display!=='none';

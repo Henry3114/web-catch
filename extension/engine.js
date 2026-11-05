@@ -235,7 +235,7 @@
       const check=preview(c);
       return {config:c,previous:oldRows.length,count:check.count,warnings:check.warnings};
     }
-    function pick({kind, listSelector: list=''}) {
+    function pick({kind, listSelector: list='',fieldName=''}) {
       if(running)throw new Error('请先暂停再修改点选。');
       cancelledPick?.();
       list=String(list || '').trim();
@@ -250,7 +250,7 @@
         let selected=null, hovered=null;
         const overlay=document.createElement('div');overlay.dataset.vpcUi='picker';
         overlay.style.cssText='position:fixed;pointer-events:none;z-index:2147483647;border:3px solid #0a9188;background:#0a91881c;box-sizing:border-box';
-        const tip=document.createElement('div');tip.dataset.vpcUi='tip';tip.textContent='点选元素 · ↑ 选外层 · ↓ 返回 · Esc 取消';
+        const tip=document.createElement('div');tip.dataset.vpcUi='tip';tip.textContent=(fieldName?'请选择“'+String(fieldName).slice(0,50)+'”':'点选元素')+' · ↑ 选外层 · ↓ 返回 · Esc 取消';
         tip.style.cssText='position:fixed;left:14px;bottom:14px;z-index:2147483647;background:#123b3a;color:white;padding:10px 16px;border-radius:8px;font:14px system-ui;pointer-events:none';
         document.documentElement.append(overlay,tip);
         const paint=()=>{if(!selected)return;const r=selected.getBoundingClientRect();Object.assign(overlay.style,{left:r.left+'px',top:r.top+'px',width:r.width+'px',height:r.height+'px'});};
@@ -261,6 +261,7 @@
           if(!selected)return;e.preventDefault();e.stopImmediatePropagation();
           try {
             let result;
+            if(['field-list','field-detail','identity'].includes(kind) && (selected===document.body || selected===document.documentElement || selected===root))throw new Error('选到了整个页面。请点击具体文字，或按↓缩小选择。');
             if(kind==='list')result=VisualLocator.listSelector(selected,root);
             else if(kind==='field-list' || kind==='detail-click') {
               let inferred=null;

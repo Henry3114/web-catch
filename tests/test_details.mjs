@@ -103,3 +103,27 @@ test('an invalid public href falls back to capturing the real title navigation',
   const a=setup();await a.manager.collect(1,{...payload(),link:'https://list.test/pc/my/_blank',config:{...config,detail:{...config.detail,clickSelector:'.title'}},rowSelector:'.record'});
   const created=a.calls.find(c=>c[0]==='create');assert.equal(created[1].url,'https://jobs.test/detail/1');await a.manager.close(1);
 });
+test('re-picking a field reopens a sample closed after automatic detection',async()=>{
+  const a=setup();const c={...config,detail:{...config.detail,sampleUrl:'https://jobs.test/detail/1'}};
+  const first=await a.manager.sample(1,{config:c,sampleTabId:999});
+  assert.equal(first.tabId,100);assert.equal(a.tabs.get(100).active,true);
+  const second=await a.manager.sample(1,{config:c,sampleTabId:100});
+  assert.equal(second.tabId,100);assert.equal(a.calls.filter(c=>c[0]==='create').length,1);await a.manager.close(1);
+});
+test('field picking reuses an already opened user sample without owning or closing it',async()=>{
+  const a=setup();a.chrome.tabs.query=async()=>[...a.tabs.values()];
+  const c={...config,detail:{...config.detail,sampleUrl:'https://jobs.test/sample'}};
+  const result=await a.manager.sample(1,{config:c});assert.equal(result.tabId,2);
+  assert.ok(!a.calls.some(c=>c[0]==='create'));await a.manager.close(1);assert.ok(a.tabs.has(2));
+});
+test('wrong-origin sample binding cannot redirect a detail picker',async()=>{
+  const a=setup();a.tabs.set(3,{id:3,url:'https://other.test/sample',status:'complete'});
+  const c={...config,detail:{...config.detail,sampleUrl:'https://jobs.test/detail/1'}};
+  const result=await a.manager.sample(1,{config:c,sampleTabId:3});assert.equal(result.tabId,100);assert.equal(a.tabs.get(3).url,'https://other.test/sample');await a.manager.close(1);
+});
+test('blank sample never starts a field picker and leaves configured fields intact',async()=>{
+  const a=setup();a.chrome.scripting.executeScript=async()=>[{result:{ok:false,error:'详情页还没有加载出正文'}}];
+  const c={...config,detail:{...config.detail,sampleUrl:'https://jobs.test/detail/1'}};
+  await assert.rejects(a.manager.sample(1,{config:c}),/没有加载出正文/);
+  assert.equal(c.fields.length,2);assert.ok(a.tabs.has(100));await a.manager.close(1);
+});

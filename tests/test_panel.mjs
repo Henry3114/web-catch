@@ -4,9 +4,9 @@ import fs from 'node:fs';
 import vm from 'node:vm';
 function setup({allowed=true,activeId=30}={}){
   const calls=[],data={};let app;
-  const chrome={windows:{getCurrent:async()=>({id:7})},storage:{session:{get:async()=>({'vpc.bindings.7':{list:10,detail:20}}),set:async d=>Object.assign(data,d)},local:{get:async()=>({}),set:async()=>{}}},permissions:{request:p=>{calls.push(['permission',p]);return Promise.resolve(allowed);}},runtime:{sendMessage:async m=>{calls.push(['message',m]);return {ok:true,data:m.action==='context'?{tabId:m.tabId ?? activeId,url:'https://detail.test/sample',title:'sample'}:{records:[]}};}}};
+  const chrome={windows:{getCurrent:async()=>({id:7})},storage:{session:{get:async()=>({'vpc.bindings.7':{list:10,detail:20}}),set:async d=>Object.assign(data,d)},local:{get:async()=>({}),set:async()=>{}}},permissions:{request:p=>{calls.push(['permission',p]);return Promise.resolve(allowed);}},runtime:{sendMessage:async m=>{calls.push(['message',m]);return {ok:true,data:m.action==='sampleForPick'?{tabId:40,url:'https://detail.test/sample'}:m.action==='context'?{tabId:m.tabId ?? activeId,url:'https://detail.test/sample',title:'sample'}:{records:[]}};}}};
   vm.runInNewContext(fs.readFileSync(new URL('../extension/panel.js',import.meta.url),'utf8'),{chrome,URL,document:{querySelector:()=>({})},VisualStudio:{create:opts=>app=opts}});
-  return {app,calls,data};
+  return {app,calls,data,chrome};
 }
 test('page mode requests just selected sites synchronously from start gesture',async()=>{
   const a=setup();const promise=a.app.api('start',{match:{origin:'https://list.test'},detail:{mode:'page',origin:'https://detail.test'},fields:[{scope:'detail'}]});
@@ -33,4 +33,24 @@ test('list tab cannot be bound as an independent detail sample',async()=>{
 test('automatic detail reading requests selected hosts in its click gesture',async()=>{
   const a=setup();const promise=a.app.api('autoDetail',{config:{match:{origin:'https://list.test'},detail:{origin:'https://detail.test'}},url:'https://detail.test/job'});
   assert.equal(a.calls[0][0],'permission');await promise;assert.equal(a.calls.at(-1)[1].tabId,10);
+});
+
+test('closed or missing detail binding is prepared before sending field picker',async()=>{
+  const a=setup();const payload={kind:'field-detail',role:'detail',config:{match:{origin:'https://list.test'},detail:{mode:'page',origin:'https://detail.test',sampleUrl:'https://detail.test/sample'}}};
+  const promise=a.app.api('pick',payload);assert.equal(a.calls[0][0],'permission');await promise;
+  const messages=a.calls.filter(c=>c[0]==='message').map(c=>c[1]);
+  assert.equal(messages[0].action,'sampleForPick');assert.equal(messages[0].tabId,10);
+  assert.equal(messages[1].action,'pick');assert.equal(messages[1].tabId,40);
+  assert.equal(a.data['vpc.bindings.7'].list,10);assert.equal(a.data['vpc.bindings.7'].detail,40);
+});
+test('cancel during sample opening prevents starting an orphaned picker',async()=>{
+  const a=setup();let ready,resolve;
+  const entered=new Promise(r=>ready=r),wait=new Promise(r=>resolve=r);
+  const original=a.chrome.runtime.sendMessage;
+  a.chrome.runtime.sendMessage=async message=>{if(message.action==='sampleForPick'){ready();await wait;return {ok:true,data:{tabId:40}};}return original(message);};
+  const picking=a.app.api('pick',{kind:'field-detail',role:'detail',config:{match:{origin:'https://list.test'},detail:{mode:'page',origin:'https://detail.test',sampleUrl:'https://detail.test/sample'}}});
+  await entered;await a.app.api('cancelPick',{role:'detail'});resolve();
+  await assert.rejects(picking,/取消/);
+  assert.ok(!a.calls.some(c=>c[0]==='message' && c[1].action==='pick'));
+  assert.ok(a.calls.some(c=>c[0]==='message' && c[1].action==='stop' && c[1].tabId===10));
 });

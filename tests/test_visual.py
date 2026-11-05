@@ -564,5 +564,82 @@ class VisualCollectorTests(unittest.TestCase):
         self.page.evaluate('recoveryStudio.dispose()')
 
 
+    def test_new_requirement_field_defaults_to_detail_and_honors_manual_scope(self):
+        self.page.locator('#example').click();self.page.locator('#add').click()
+        card=self.page.locator('#fields .field').last
+        card.locator('.fieldname').fill('岗位要求')
+        self.assertEqual(card.locator('.scope').input_value(),'detail')
+        self.assertEqual(card.locator('.pick').inner_text(),'点选详情')
+        card.locator('.scope').select_option('list')
+        card=self.page.locator('#fields .field').last
+        card.locator('.fieldname').fill('岗位要求补充')
+        self.assertEqual(card.locator('.scope').input_value(),'list')
+        self.assertIn('自动返回列表',card.locator('.pick-state').inner_text())
+
+    def test_unconfigured_requirement_in_old_draft_is_recognized_as_detail(self):
+        self.page.evaluate("""()=>{const c=VisualDemo.example();c.fields.push({id:'my-requirement',name:'岗位要求',scope:'list',type:'text',selector:''});VisualDemo.studio.loadConfig(c);}""")
+        card=self.page.locator('[data-field-id="my-requirement"]')
+        self.assertEqual(card.locator('.scope').input_value(),'detail')
+        self.assertIn('自动打开详情',card.locator('.pick-state').inner_text())
+
+    def test_repick_routes_detail_and_list_fields_without_changing_other_rules(self):
+        self.page.evaluate("""async()=>{
+          VisualDemo.studio.dispose();document.querySelector('#app').replaceChildren();window.fieldCalls=[];
+          const c=VisualDemo.example();c.detail={...c.detail,mode:'page',origin:'https://jobs.example',sampleUrl:'https://jobs.example/one'};
+          window.fieldStudio=VisualStudio.create({element:document.querySelector('#app'),storage:{get:async()=>({}),set:async()=>{},getDraft:async()=>c},api:async(action,payload)=>{
+            if(action==='context')return {title:'列表',url:location.href};
+            if(action==='state')return {records:[],status:'idle',running:false,config:null,message:''};
+            if(action==='pick'){fieldCalls.push(payload);return {selector:payload.role==='detail'?'.new-requirement':'.new-title',sample:'选中的样例'};}
+          }});await fieldStudio.ready;
+        }""")
+        self.page.locator('#advanced-settings').evaluate('el=>el.open=true')
+        self.page.locator('[data-field-id="requirements"] .pick').click()
+        self.page.wait_for_function("fieldCalls.length===1 && document.querySelector('#picker-help').hidden")
+        self.page.locator('[data-field-id="name"] .pick').click()
+        self.page.wait_for_function('fieldCalls.length===2')
+        calls=self.page.evaluate('fieldCalls')
+        self.assertEqual(calls[0]['role'],'detail');self.assertEqual(calls[0]['config']['detail']['sampleUrl'],'https://jobs.example/one')
+        self.assertEqual(calls[1]['role'],'list')
+        config=self.page.evaluate('fieldStudio.getConfig()');fields={f['id']:f for f in config['fields']}
+        self.assertEqual(fields['requirements']['selector'],'.new-requirement');self.assertEqual(fields['name']['selector'],'.new-title')
+        self.assertEqual(fields['salary']['selector'],'.salary');self.assertEqual(fields['description']['selector'],'#detail-description')
+        self.page.evaluate('fieldStudio.dispose()')
+
+    def test_busy_picker_explains_next_action_next_to_clicked_field(self):
+        self.page.locator('#example').click()
+        self.page.locator('[data-field-id="name"] .pick').click()
+        self.page.locator('[data-field-id="company"] .pick').click()
+        self.assertIn('先按Esc',self.page.locator('[data-field-id="company"] .pick-state').inner_text())
+        self.assertTrue(self.page.locator('#picker-help').is_visible())
+        self.page.keyboard.press('Escape')
+        self.page.wait_for_function("document.querySelector('#picker-help').hidden")
+        self.assertEqual(self.page.locator('[data-vpc-ui]').count(),0)
+
+    def test_field_picker_rejects_whole_page_and_then_accepts_specific_text(self):
+        self.page.evaluate("()=>{window.specificResult=null;VisualDemo.engine.pick({kind:'field-detail',fieldName:'岗位要求'}).then(r=>specificResult=r).catch(()=>{});}")
+        area=self.page.locator('#demo-page');area.hover(position={'x':2,'y':2});area.click(position={'x':2,'y':2})
+        self.assertIn('整个页面',self.page.locator('[data-vpc-ui=tip]').inner_text())
+        self.assertIsNone(self.page.evaluate('specificResult'))
+        target=self.page.locator('#detail-requirements');target.hover();target.click()
+        self.page.wait_for_function('specificResult!==null')
+        self.assertEqual(self.page.evaluate('specificResult.selector'),'#detail-requirements')
+
+    def test_auto_detail_preparation_keeps_custom_fields_waiting_for_selection(self):
+        self.page.evaluate("""async()=>{
+          VisualDemo.studio.dispose();document.querySelector('#app').replaceChildren();
+          const c=VisualDemo.example();c.fields=c.fields.filter(f=>f.scope==='list').concat({id:'custom-demand',name:'岗位要求',scope:'detail',type:'text',selector:''});c.detail={...c.detail,mode:'page',origin:'https://jobs.example',sampleUrl:'https://jobs.example/one'};
+          window.customStudio=VisualStudio.create({element:document.querySelector('#app'),storage:{get:async()=>({}),set:async()=>{},getDraft:async()=>c},api:async(action)=>{
+            if(action==='context')return {title:'列表',url:location.href};if(action==='state')return {records:[],status:'idle',running:false,config:null,message:''};
+            if(action==='autoDetail')return {fields:[{id:'auto-description',name:'职位描述',scope:'detail',type:'text',selector:'.job-description'}],sample:{'auto-description':'正文'},url:'https://jobs.example/one'};
+          }});await customStudio.ready;
+        }""")
+        self.page.locator('#guide-action').click()
+        self.page.wait_for_function("document.querySelector('#guide-action').textContent==='点选岗位要求'")
+        fields=self.page.evaluate('customStudio.getConfig().fields')
+        self.assertTrue(any(f['id']=='custom-demand' and f['selector']=='' for f in fields))
+        self.assertTrue(any(f['id']=='auto-description' for f in fields))
+        self.page.evaluate('customStudio.dispose()')
+
+
 if __name__=='__main__':
     unittest.main()
