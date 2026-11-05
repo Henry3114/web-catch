@@ -641,5 +641,36 @@ class VisualCollectorTests(unittest.TestCase):
         self.page.evaluate('customStudio.dispose()')
 
 
+    def test_responsibilities_and_requirements_split_same_container_and_excel(self):
+        text='岗位职责：\n1、整理业务数据。\n2、制作分析报告。\n任职要求：\n1、本科以上学历。\n2、熟悉SQL。\n备注：仅供参考\n职能类别：分析师'
+        result=self.page.evaluate("""text=>{
+          const fields=[{id:'duties',name:'工作职责',scope:'detail',type:'text',selector:'#split-body'},{id:'requirements',name:'岗位要求',scope:'detail',type:'text',selector:'#split-body'}];
+          const el=document.createElement('div');el.id='split-body';el.innerText=text;document.querySelector('#demo-page').append(el);
+          const c=VisualDemo.example();c.fields=c.fields.filter(f=>f.scope==='list').concat(fields);
+          const preview=VisualDemo.engine.sample(c);
+          return {preview,bytes:Array.from(VisualXlsx.createWorkbook([preview],fields))};
+        }""",text)
+        self.assertEqual(result['preview']['duties'],'1、整理业务数据。\n2、制作分析报告。')
+        self.assertEqual(result['preview']['requirements'],'1、本科以上学历。\n2、熟悉SQL。')
+        wb=load_workbook(io.BytesIO(bytes(result['bytes'])))
+        self.assertNotEqual(wb.active['A2'].value,wb.active['B2'].value);wb.close()
+
+    def test_cross_page_reader_splits_sections_and_preserves_whole_text_option(self):
+        self.page.add_script_tag(path=str(ROOT/'extension/detail-reader.js'))
+        result=self.page.evaluate(r"""async()=>{
+          const el=document.createElement('div');el.id='section-body';el.innerText='工作职责：\n整理数据并完成报告。\n岗位要求：\n具备数据分析经验。\n工作地址：广州';document.body.prepend(el);
+          const fields=[{id:'a',name:'工作职责',type:'text',selector:'#section-body'},{id:'b',name:'岗位要求',type:'text',selector:'#section-body'},{id:'all',name:'完整描述',section:'whole',type:'text',selector:'#section-body'}];
+          window.sectionRead=null;VisualDetail.read({fields,detail:{},timeout:1500,url:location.href}).then(r=>sectionRead=r);
+        }""")
+        self.tick('sectionRead!==null')
+        result=self.page.evaluate('sectionRead');self.assertTrue(result['ok'])
+        self.assertEqual(result['data']['a'],'整理数据并完成报告。');self.assertEqual(result['data']['b'],'具备数据分析经验。')
+        self.assertIn('工作地址',result['data']['all'])
+
+    def test_missing_section_does_not_copy_another_section(self):
+        result=self.page.evaluate(r"""()=>({missing:VisualDetect.section('岗位职责：\n分析业务数据。',{name:'岗位要求'}),narrow:VisualDetect.section('本科以上，熟悉SQL。',{name:'岗位要求'}),whole:VisualDetect.section('岗位职责：\n分析业务数据。',{name:'岗位要求',section:'whole'})})""")
+        self.assertEqual(result['missing'],'');self.assertEqual(result['narrow'],'本科以上，熟悉SQL。');self.assertIn('岗位职责',result['whole'])
+
+
 if __name__=='__main__':
     unittest.main()

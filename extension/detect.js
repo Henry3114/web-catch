@@ -1,6 +1,20 @@
 "use strict";
 (() => {
   if(globalThis.VisualDetect)return;
+  function section(text,field){
+  const aliases={duties:['工作职责','岗位职责','职位职责','工作内容','岗位内容','主要职责','职责描述'],requirements:['岗位要求','任职要求','职位要求','任职资格','招聘要求','任职条件','资格要求']};
+  let mode=field.section || 'auto';
+  if(mode==='whole')return text;
+  if(mode==='auto'){const name=String(field.name || '').replace(/\s/g,'');mode=Object.keys(aliases).find(key=>aliases[key].includes(name));}
+  if(!mode || !aliases[mode])return text;
+  const titles=[...aliases.duties,...aliases.requirements,'备注','其他说明','其它说明','职能类别','关键字','关键词','工作地址','工作地点','公司信息','公司介绍','福利待遇'];
+  const pattern=new RegExp('(^|[\\r\\n])\\s*(?:[一二三四五六七八九十0-9]+[、.．）)]\\s*)?[【\\[]?('+titles.join('|')+')[】\\]]?\\s*(?:[:：]|(?=[\\r\\n]|$))','g');
+  const matches=[...text.matchAll(pattern)];
+  const selected=matches.findIndex(m=>aliases[mode].includes(m[2]));
+  if(selected>=0){const start=matches[selected].index+matches[selected][0].length,end=matches[selected+1]?.index ?? text.length;return text.slice(start,end).trim();}
+  if(matches.some(m=>[...aliases.duties,...aliases.requirements].includes(m[2])))return '';
+  return text;
+}
   function url(raw,base){
     if(raw==null || !String(raw).trim() || /^\s*(?:#|_(?:blank|self|top|parent)\s*$)/i.test(String(raw)))return '';
     try{const u=new URL(String(raw),base);if(!/^https?:$/.test(u.protocol) || /(?:^|\/)_(?:blank|self|top|parent)\/?$/i.test(decodeURIComponent(u.pathname)))return '';return u.href;}catch{return '';}
@@ -100,5 +114,5 @@
     if(content.length<30 || /(?:404|page not found|页面不存在|页面未找到|该网页无法正常运作)/i.test(content.slice(0,500)))return {ok:false,invalidPage:true,error:'详情页没有加载出职位内容。请回工作台点“重新获取详情链接”。'};
     return {ok:false,needsSelection:true,error:'页面有内容，但未识别出职位正文。点“点选职位描述”，选择正文即可。'};
   }
-  globalThis.VisualDetect={list,details,url};
+  globalThis.VisualDetect={list,details,url,section};
 })();

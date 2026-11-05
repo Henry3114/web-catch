@@ -13,6 +13,20 @@ globalThis.VisualDetail={
     return {ok:false,error:'详情页还没有加载出正文。请刷新详情页，再点选这个字段。'};
   },
   read:async function({fields,detail,expected,timeout,url}) {
+    function section(text,field){
+  const aliases={duties:['工作职责','岗位职责','职位职责','工作内容','岗位内容','主要职责','职责描述'],requirements:['岗位要求','任职要求','职位要求','任职资格','招聘要求','任职条件','资格要求']};
+  let mode=field.section || 'auto';
+  if(mode==='whole')return text;
+  if(mode==='auto'){const name=String(field.name || '').replace(/\s/g,'');mode=Object.keys(aliases).find(key=>aliases[key].includes(name));}
+  if(!mode || !aliases[mode])return text;
+  const titles=[...aliases.duties,...aliases.requirements,'备注','其他说明','其它说明','职能类别','关键字','关键词','工作地址','工作地点','公司信息','公司介绍','福利待遇'];
+  const pattern=new RegExp('(^|[\\r\\n])\\s*(?:[一二三四五六七八九十0-9]+[、.．）)]\\s*)?[【\\[]?('+titles.join('|')+')[】\\]]?\\s*(?:[:：]|(?=[\\r\\n]|$))','g');
+  const matches=[...text.matchAll(pattern)];
+  const selected=matches.findIndex(m=>aliases[mode].includes(m[2]));
+  if(selected>=0){const start=matches[selected].index+matches[selected][0].length,end=matches[selected+1]?.index ?? text.length;return text.slice(start,end).trim();}
+  if(matches.some(m=>[...aliases.duties,...aliases.requirements].includes(m[2])))return '';
+  return text;
+}
     const norm=v=>String(v ?? '').replace(/\s+/g,'');
     const visible=el=>!!el && !!el.getClientRects().length && getComputedStyle(el).visibility!=='hidden' && getComputedStyle(el).display!=='none';
     const target=new URL(url);
@@ -20,9 +34,10 @@ globalThis.VisualDetail={
     const read=f=>{
       const el=document.querySelector(f.selector);if(!visible(el))return '';
       if(f.type==='text') {
-        const text=(el.innerText || '').trim();
+        let text=(el.innerText || '').trim();
+        if((f.section || 'auto')!=='whole' && /^(工作职责|岗位职责|职位职责|工作内容|岗位要求|任职要求|任职资格|职位要求)$/.test(f.name || '')){for(let parent=el.parentElement,depth=0;parent && parent!==document.body && depth<3;parent=parent.parentElement,depth++){const nearby=(parent.innerText || '').trim();if(/(?:工作职责|岗位职责|任职要求|岗位要求)\s*[:：]/.test(nearby) && nearby.length<30000){text=nearby;break;}}}
         if(/[\uE000-\uF8FF]/u.test(text))throw new Error(`“${f.name || '详情'}”含特殊字体字符，无法可靠提取。`);
-        return text;
+        return section(text,f);
       }
       const node=f.type==='href'?(el.closest('a[href]') || el.querySelector('a[href]')):(el.matches('img')?el:el.querySelector('img'));
       const raw=node?.getAttribute(f.type);if(!raw)return '';

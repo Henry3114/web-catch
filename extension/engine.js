@@ -68,9 +68,10 @@
       const el = field.selector === ':scope' ? container : container.querySelector(field.selector);
       if (!el || !visible(el)) return '';
       if (field.type === 'text') {
-        const text = (el.innerText || '').trim();
+        let text=(el.innerText || '').trim();
+        if((field.section || 'auto')!=='whole' && /^(工作职责|岗位职责|职位职责|工作内容|岗位要求|任职要求|任职资格|职位要求)$/.test(field.name || '')){for(let parent=el.parentElement,depth=0;parent && parent!==document.body && depth<3;parent=parent.parentElement,depth++){const nearby=(parent.innerText || '').trim();if(/(?:工作职责|岗位职责|任职要求|岗位要求)\s*[:：]/.test(nearby) && nearby.length<30000){text=nearby;break;}}}
         if (/[\uE000-\uF8FF]/u.test(text)) throw new Error(`“${field.name}”包含特殊字体字符，普通文字读取不可靠。请取消此字段或使用专门适配。`);
-        return text;
+        return field.scope==='detail'?VisualDetect.section(text,field):text;
       }
       const target = field.type === 'href' ? (el.closest('a[href]') || el.querySelector('a[href]')) : (el.matches('img') ? el : el.querySelector('img'));
       const raw = target?.getAttribute(field.type) || '';
