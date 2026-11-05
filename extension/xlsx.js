@@ -47,7 +47,7 @@
     return concat([...locals, directory, end]);
   }
   function createWorkbook(records, fields, {dropEmpty = true, errors = []} = {}) {
-    const all = [...fields, {id: '_source', name: '来源页面'}, {id: '_time', name: '采集时间'}];
+    const all = [...fields, ...(records.some(r=>r._detailUrl)?[{id:'_detailUrl',name:'详情页面'}]:[]), {id: '_source', name: '来源页面'}, {id: '_time', name: '采集时间'}];
     const columns = all.filter(f => !dropEmpty || records.some(r => safe(r[f.id]).trim()));
     if (!columns.length) columns.push({id: '_source', name: '来源页面'});
     const overflow = [['记录序号', '字段', '分段', '完整内容（按序拼接）']];

@@ -254,5 +254,120 @@ class VisualCollectorTests(unittest.TestCase):
             self.assertIn('visual-page-collector/试玩.html',archive.namelist())
 
 
+
+    def page_detail_engine(self, broken=None):
+        detail=self.context.new_page()
+        detail.on('pageerror', lambda e: self.errors.append(str(e)))
+        def route(request):
+            ident=request.request.url.rsplit('/',1)[-1]
+            title='安全验证' if broken=='login' and ident=='2' else '职位详情'
+            name='错误职位' if broken=='identity' and ident=='2' else '职位'+ident
+            text='' if broken=='blank' and ident=='2' else '岗位职责'+ident
+            request.fulfill(content_type='text/html; charset=utf-8',body=f'<html><head><title>{title}</title></head><body><h1>{name}</h1><div id="description">{text}</div><div id="requirements">任职要求{ident}</div></body></html>')
+        self.context.route('**/test-details/*',route)
+        port=self.server.server_port
+        origin=f'http://localhost:{port}'
+        def read_remote(payload):
+            detail.goto(payload['link'])
+            detail.add_script_tag(path=str(ROOT/'extension/detail-reader.js'))
+            return detail.evaluate('opts=>VisualDetail.read(opts)',{'fields':[f for f in payload['config']['fields'] if f['scope']=='detail'],'detail':payload['config']['detail'],'expected':payload['data']['name'],'timeout':1200,'url':payload['link']})
+        self.read_remote=read_remote
+        self.page.evaluate("""origin=>{
+          const host=document.createElement('div');host.id='remote-records';
+          host.innerHTML=[1,2,3].map(n=>`<div class="remote-record"><a class="title" href="${origin}/test-details/${n}">职位${n}</a><span class="salary">${n+7}K</span></div>`).join('');
+          document.body.prepend(host);
+          const c=VisualStudio.defaults();c.name='跨页测试';c.match.origin=location.origin;c.listSelector='#remote-records .remote-record';
+          c.fields=[{id:'name',name:'职位名称',scope:'list',type:'text',selector:'.title'},{id:'url',name:'职位链接',scope:'list',type:'href',selector:'.title'},{id:'salary',name:'薪资',scope:'list',type:'text',selector:'.salary'},{id:'description',name:'岗位职责',scope:'detail',type:'text',selector:'#description'},{id:'requirements',name:'任职要求',scope:'detail',type:'text',selector:'#requirements'}];
+          c.detail={mode:'page',origin,linkField:'url',identityField:'name',identitySelector:'h1',identityType:'text'};
+          c.options={count:3,delay:500,timeout:1200,maxPages:1,dropEmpty:true};
+          window.remoteConfig=c;window.remoteEngine=VisualEngine.create({detailReader:async payload=>{const r=await new Promise(resolve=>{window.remotePending={payload,resolve};});if(!r.ok){const e=new Error(r.error);e.needsUser=!!r.needsUser;throw e;}return r.data;}});
+        }""",origin)
+        return detail
+
+    def run_remote(self):
+        self.page.evaluate('remoteEngine.start(remoteConfig)')
+        for _ in range(100):
+            payload=self.page.evaluate('window.remotePending?.payload || null')
+            if payload:
+                reply=self.read_remote(payload)
+                self.page.evaluate('reply=>{const p=window.remotePending;window.remotePending=null;p.resolve(reply);}',reply)
+            self.page.clock.fast_forward(600)
+            if not self.page.evaluate('remoteEngine.snapshot().running'):
+                return
+        self.fail('跨页任务未结束')
+
+    def test_cross_origin_detail_pages_merge_distinct_rows_and_export(self):
+        detail=self.page_detail_engine()
+        self.run_remote()
+        state=self.page.evaluate('remoteEngine.snapshot()')
+        self.assertEqual(state['status'],'done')
+        self.assertEqual([r['description'] for r in state['records']],['岗位职责1','岗位职责2','岗位职责3'])
+        self.assertEqual([r['requirements'] for r in state['records']],['任职要求1','任职要求2','任职要求3'])
+        self.assertNotEqual(state['records'][0]['_source'].split('/')[2],state['records'][0]['_detailUrl'].split('/')[2])
+        data=self.page.evaluate('Array.from(VisualXlsx.createWorkbook(remoteEngine.snapshot().records,remoteConfig.fields))')
+        wb=load_workbook(io.BytesIO(bytes(data)));rows=list(wb.active.values)
+        self.assertIn('详情页面',rows[0]);self.assertEqual(rows[2][0],'职位2');self.assertIn('岗位职责2',rows[2]);wb.close();detail.close()
+
+    def test_wrong_detail_identity_pauses_and_preserves_previous_row(self):
+        detail=self.page_detail_engine('identity')
+        self.run_remote()
+        state=self.page.evaluate('remoteEngine.snapshot()')
+        self.assertEqual(state['status'],'paused');self.assertEqual(len(state['records']),1)
+        self.assertIn('标识不匹配',state['message']);detail.close()
+
+    def test_detail_login_pauses_with_previous_data_and_resume_flag(self):
+        detail=self.page_detail_engine('login')
+        self.run_remote()
+        state=self.page.evaluate('remoteEngine.snapshot()')
+        self.assertEqual(state['status'],'paused');self.assertTrue(state['needsUser']);self.assertEqual(len(state['records']),1);detail.close()
+
+    def test_blank_detail_field_is_not_silently_saved(self):
+        detail=self.page_detail_engine('blank')
+        self.run_remote()
+        state=self.page.evaluate('remoteEngine.snapshot()')
+        self.assertEqual(state['status'],'paused');self.assertEqual(len(state['records']),1);detail.close()
+
+    def test_title_url_capture_supports_js_and_restores_window_open(self):
+        self.page.add_script_tag(path=str(ROOT/'extension/detail-reader.js'))
+        result=self.page.evaluate("""async()=>{
+          const el=document.createElement('div');el.id='capture-test';el.innerHTML='<span class="title">职位标题</span>';document.body.prepend(el);
+          el.querySelector('.title').onclick=()=>window.open('https://jobs.example/detail/7','_blank');
+          const original=window.open;const result=await VisualDetail.capture({rowSelector:'#capture-test',clickSelector:'.title'});
+          return {...result,restored:window.open===original};
+        }""")
+        self.assertEqual(result['url'],'https://jobs.example/detail/7');self.assertTrue(result['restored'])
+
+    def test_page_detail_mode_form_roundtrip_and_validation(self):
+        self.page.evaluate("""()=>{const c=VisualDemo.example();c.detail={mode:'page',origin:'https://jobs.example',linkField:'url',clickSelector:'.open-detail',identityField:'name',identitySelector:'h1'};VisualDemo.studio.loadConfig(c);}""")
+        self.assertEqual(self.page.locator('#detail-mode').input_value(),'page');self.assertTrue(self.page.locator('#connect-detail').is_visible())
+        c=self.page.evaluate('VisualDemo.studio.getConfig()');self.assertEqual(c['detail']['origin'],'https://jobs.example');self.assertEqual(c['detail']['mode'],'page')
+        error=self.page.evaluate("""()=>{try{const c=VisualDemo.studio.getConfig();c.detail.origin='javascript:bad';VisualEngine.validate(c);return '';}catch(e){return e.message;}}""")
+        self.assertIn('无效',error)
+
+
+    def test_detail_reader_rejects_different_query_even_on_same_path(self):
+        detail=self.context.new_page()
+        detail.goto(self.demo_url)
+        detail.add_script_tag(path=str(ROOT/'extension/detail-reader.js'))
+        result=detail.evaluate("opts=>VisualDetail.read(opts)",{'fields':[],'detail':{},'timeout':1000,'url':self.demo_url+'?job=other'})
+        self.assertFalse(result['ok']);self.assertIn('不同页面',result['error']);detail.close()
+
+    def test_incomplete_page_detail_draft_survives_ui_recreation(self):
+        self.page.evaluate("""async()=>{
+          const el=document.createElement('main');el.id='draft-area';document.body.append(el);
+          const c=VisualDemo.example();c.detail={...c.detail,mode:'page',origin:'https://jobs.example',linkField:'url'};
+          window.savedDraft=c;
+          window.draftStudio=VisualStudio.create({element:el,api:async action=>action==='context'?{title:'列表',url:location.href}:{records:[],status:'idle',running:false,message:'',config:null},storage:{get:async()=>({}),set:async()=>{},getDraft:async()=>savedDraft,setDraft:async c=>{savedDraft=c;}}});
+          await draftStudio.ready;
+        }""")
+        self.assertEqual(self.page.locator('#draft-area #detail-mode').input_value(),'page')
+        self.page.locator('#draft-area #name').fill('尚未配置完成的模板')
+        self.page.locator('#draft-area #add').click()
+        self.page.clock.fast_forward(300)
+        self.assertEqual(self.page.evaluate('savedDraft.name'),'尚未配置完成的模板')
+        self.assertEqual(self.page.evaluate('savedDraft.fields.at(-1).selector'),'')
+        self.page.evaluate("draftStudio.dispose();document.querySelector('#draft-area').remove()")
+
+
 if __name__=='__main__':
     unittest.main()

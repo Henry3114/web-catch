@@ -1,4 +1,5 @@
 "use strict";
+importScripts('detail-reader.js','detail-manager.js');
 async function connect(tabId){
   const tab=await chrome.tabs.get(tabId);
   if(!/^https?:\/\//.test(tab.url || ''))throw new Error('请切到普通网页并点击工具栏图标；浏览器内部页面不允许采集。');
@@ -18,13 +19,20 @@ chrome.action.onClicked.addListener(tab=>{
   connect(tab.id).catch(error=>chrome.action.setTitle({tabId:tab.id,title:error.message}));
 });
 chrome.runtime.onMessage.addListener((message,sender,reply)=>{
+  if(message?.type==='VPC_DETAIL' && sender.id===chrome.runtime.id && sender.tab?.id!=null){
+    const id=sender.tab.id;
+    const operation=message.action==='collect'?VisualDetailManager.collect(id,message.payload):message.action==='finish'?VisualDetailManager.close(id,{keep:message.needsUser}):Promise.reject(new Error('未知详情操作。'));
+    operation.then(data=>reply({ok:true,data})).catch(error=>reply({ok:false,error:error.message,needsUser:!!error.needsUser}));return true;
+  }
   if(message?.type!=='VPC_RPC' || sender.id!==chrome.runtime.id)return;
   (async()=>{
     const [active]=await chrome.tabs.query({active:true,currentWindow:true});
     const id=message.tabId ?? active?.id;
     if(id==null)throw new Error('未找到当前网页。');
+    if(message.action==='stop')await VisualDetailManager.cancel(id);
     const tab=await connect(id);
     if(message.action==='context')return {tabId:id,url:tab.url,title:tab.title};
+    if(message.action==='pick')await chrome.tabs.update(id,{active:true});
     const response=await chrome.tabs.sendMessage(id,{type:'VPC_CONTENT',action:message.action,payload:message.payload});
     if(!response?.ok)throw new Error(response?.error || '网页没有响应。');
     return response.data;
@@ -42,3 +50,4 @@ chrome.tabs.onUpdated.addListener((id,info)=>{
     await chrome.tabs.sendMessage(id,{type:'VPC_CONTENT',action:'start',payload:data.config});
   }).catch(()=>{});
 });
+chrome.tabs.onRemoved.addListener(id=>VisualDetailManager.cancel(id).catch(()=>{}));

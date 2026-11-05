@@ -129,14 +129,23 @@ body{background:#eaf0ec}.demo-layout{display:grid;grid-template-columns:minmax(5
     if (!['none','next','load','scroll'].includes(c.pagination.mode)) throw new Error('翻页方式无效。');
     if (['next','load'].includes(c.pagination.mode) && !c.pagination.selector) throw new Error('请点选下一页或加载更多按钮。');
     for (const selector of [c.pagination.selector, c.detail?.clickSelector, c.detail?.identitySelector]) if (selector) document.createDocumentFragment().querySelector(selector);
-    if (c.fields.some(f=>f.scope==='detail')) {
+    c.detail ||= {};
+    c.detail.mode ||= 'same';
+    if (!['same','page'].includes(c.detail.mode)) throw new Error('详情模式无效。');
+    if (c.fields.some(f=>f.scope==='detail') && c.detail.mode==='page') {
+      let origin;try {origin=new URL(c.detail.origin);}catch {throw new Error('请连接一个详情样例页。');}
+      if (!/^https?:$/.test(origin.protocol) || origin.origin!==c.detail.origin) throw new Error('详情网站地址无效。');
+      const link=c.fields.find(f=>f.id===c.detail.linkField && f.scope==='list' && f.type==='href');
+      if (!link && !c.detail.clickSelector) throw new Error('请选取列表中的职位链接字段，或点选打开详情的位置。');
+      if (c.detail.identitySelector && !c.fields.some(f=>f.id===c.detail.identityField && f.scope==='list')) throw new Error('请设置详情标识对应的列表字段。');
+    } else if (c.fields.some(f=>f.scope==='detail')) {
       const field = c.fields.find(f=>f.id===c.detail?.identityField && f.scope==='list');
       if (!field || !c.detail?.identitySelector) throw new Error('有详情字段时，请设置列表中的标识字段和详情区对应的标识。');
     }
     c.keyFields = (c.keyFields || []).filter(id=>c.fields.some(f=>f.id===id && f.scope==='list'));
     return c;
   }
-  function create({root = document, onUpdate = async()=>{}, url = ()=>location.href} = {}) {
+  function create({root = document, onUpdate = async()=>{}, url = ()=>location.href, detailReader = null} = {}) {
     let running = false, task = null, cancelledPick = null;
     let state = {status:'idle', message:'请选择列表，再添加字段。', config:null, records:[], errors:[], page:1, pending:null, source:url()};
     const get = selector => selector === ':scope' ? root : root.querySelector(selector);
@@ -183,6 +192,10 @@ body{background:#eaf0ec}.demo-layout{display:grid;grid-template-columns:minmax(5
     async function readDetails(row, data, c) {
       const fields = c.fields.filter(f=>f.scope==='detail');
       if (!fields.length) return {};
+      if (c.detail.mode==='page') {
+        if (!detailReader) throw new Error('跨页详情需要在独立扩展中运行。');
+        return detailReader({config:c,data,link:data[c.detail.linkField] || '',rowSelector:VisualLocator.unique(row,document)});
+      }
       const expected = norm(data[c.detail.identityField]);
       if (!expected) throw new Error('当前列表记录的详情标识为空，已暂停，避免错配。');
       const before = detailValues(c);
@@ -210,7 +223,7 @@ body{background:#eaf0ec}.demo-layout{display:grid;grid-template-columns:minmax(5
         } else {previous=''; since=0;}
         await sleep(200);
       }
-      throw new Error('详情未能与当前记录对应，已暂停。请检查详情标识和等待更新字段；新标签页详情暂不支持。');
+      throw new Error('详情未能与当前记录对应，已暂停。请检查详情标识和等待更新字段；跳转网页请选择“进入详情页”。');
     }
     async function advance(c, previous) {
       if (c.pagination.mode==='none') return false;
@@ -262,6 +275,7 @@ body{background:#eaf0ec}.demo-layout{display:grid;grid-template-columns:minmax(5
         }
         await emit(state.records.length>=c.options.count ? `已完成 ${Math.min(state.records.length,c.options.count)} 条，可以导出 Excel。` : `已采集 ${state.records.length} 条；没有更多记录或达到翻页上限，可导出已有结果。`,'done');
       } catch(error) {
+        state.needsUser=!!error.needsUser;
         if(running) state.errors.push({url:url(),message:error.message});
         await emit(error.message,'paused');
       } finally {running=false;state.pending=null;await emit();}
@@ -274,24 +288,24 @@ body{background:#eaf0ec}.demo-layout{display:grid;grid-template-columns:minmax(5
       if(state.records.length && structure(c)!==structure(state.config)) throw new Error('字段或定位配置已改变，请先导出并清空已有结果，再运行新配置。');
       if(!state.config)state.source=url();
       state.page=state.pending?.nextPage || 1;
-      state.config=c;state.pending=null;running=true;
+      state.config=c;state.pending=null;state.needsUser=false;running=true;
       await emit('正在运行，请保持目标网页打开。','running');
       task=loop(c).finally(()=>{task=null;});
       return snapshot();
     }
     async function stop(){running=false;if(task) await task;await emit('已暂停，已有结果保留。','paused');return snapshot();}
-    async function clear(){if(running)throw new Error('请先暂停再清空。');if(task)await task;state={...state,config:null,source:url(),records:[],errors:[],page:1,pending:null};await emit('结果已清空。','idle');return snapshot();}
+    async function clear(){if(running)throw new Error('请先暂停再清空。');if(task)await task;state={...state,config:null,source:url(),records:[],errors:[],page:1,pending:null,needsUser:false};await emit('结果已清空。','idle');return snapshot();}
     function restore(data) {
       if(!data?.config || !Array.isArray(data.records))return;
-      validate(data.config);
-      state=structuredClone(data);running=false;delete state.running;
+      const config=validate(data.config);
+      state=structuredClone(data);state.config=config;running=false;delete state.running;
     }
     function preview(input) {
       const c=validate(input), rows=items(c), warnings=[];
       if(rows.slice(0,5).some(row=>VisualLocator.nestedRecords(row)>1))warnings.push('列表可能选中了外层容器：一个匹配项包含多条记录。请使用“修复列表层级与字段”。');
       const data=rows.slice(0,5).map(row=>listValues(row,c));
       for(const f of c.fields.filter(f=>f.scope==='list')) if(data.every(r=>!r[f.id]))warnings.push(`“${f.name}”在预览中全部为空。`);
-      return {count:rows.length,records:data,detail:detailValues(c),warnings};
+      return {count:rows.length,records:data,detail:c.detail.mode==='page'?{}:detailValues(c),warnings};
     }
     function repair(input) {
       const c=validate(input), oldRows=items(c), original=oldRows[0];
@@ -355,7 +369,7 @@ body{background:#eaf0ec}.demo-layout{display:grid;grid-template-columns:minmax(5
         document.addEventListener('mousemove',move,true);document.addEventListener('click',click,true);document.addEventListener('keydown',keyDown,true);
       });
     }
-    return {start,stop,clear,preview,repair,pick,snapshot,restore,cancelPick:()=>cancelledPick?.()};
+    return {start,stop,clear,preview,repair,pick,snapshot,restore,sample:input=>detailValues(validate(input)),cancelPick:()=>cancelledPick?.()};
   }
   globalThis.VisualEngine={create,validate};
 })();
@@ -410,7 +424,7 @@ body{background:#eaf0ec}.demo-layout{display:grid;grid-template-columns:minmax(5
     return concat([...locals, directory, end]);
   }
   function createWorkbook(records, fields, {dropEmpty = true, errors = []} = {}) {
-    const all = [...fields, {id: '_source', name: '来源页面'}, {id: '_time', name: '采集时间'}];
+    const all = [...fields, ...(records.some(r=>r._detailUrl)?[{id:'_detailUrl',name:'详情页面'}]:[]), {id: '_source', name: '来源页面'}, {id: '_time', name: '采集时间'}];
     const columns = all.filter(f => !dropEmpty || records.some(r => safe(r[f.id]).trim()));
     if (!columns.length) columns.push({id: '_source', name: '来源页面'});
     const overflow = [['记录序号', '字段', '分段', '完整内容（按序拼接）']];
@@ -440,15 +454,15 @@ body{background:#eaf0ec}.demo-layout{display:grid;grid-template-columns:minmax(5
 </script><script>
 "use strict";
 (() => {
-  const DEFAULT=()=>({version:1,id:crypto.randomUUID(),name:'我的采集模板',match:{origin:''},listSelector:'',fields:[],keyFields:[],detail:{clickSelector:'',identityField:'',identitySelector:'',identityType:'text',waitField:'',allowSame:false},pagination:{mode:'none',selector:''},options:{count:20,delay:1500,timeout:15000,maxPages:30,dropEmpty:true}});
+  const DEFAULT=()=>({version:1,id:crypto.randomUUID(),name:'我的采集模板',match:{origin:''},listSelector:'',fields:[],keyFields:[],detail:{mode:'same',origin:'',linkField:'',clickSelector:'',identityField:'',identitySelector:'',identityType:'text',waitField:'',allowSame:false},pagination:{mode:'none',selector:''},options:{count:20,delay:1500,timeout:15000,maxPages:30,dropEmpty:true}});
   function create({element,api,storage,demo=false}) {
-    let config=DEFAULT(), context=null, templates={}, latest=null, busy=false, startedHere=false;
+    let config=DEFAULT(), context=null, templates={}, latest=null, busy=false, startedHere=false,pickingRole='list';
     element.className='studio';
     element.innerHTML=`<div class="top"><div class="mark">V</div><div><h1>网页采集工作台</h1><span class="tag">${demo?'离线演示 · 示例数据':'独立试用版 · 配置驱动'}</span></div></div>
       <p class="hint">鼠标点选网页，建立自己的采集模板。</p>
       <div class="quickbar"><button id="quick-preview">预览</button><button id="quick-start" class="primary">开始采集</button><button id="quick-stop">暂停</button><button id="quick-export">导出</button><span id="quick-progress" class="hint"></span></div>
       <div id="notice" role="status">正在连接当前网页…</div><p id="source" class="source"></p>
-      <div class="buttons"><button id="connect">连接当前网页</button><button id="example" ${demo?'':'hidden'}>填入演示模板</button><a class="demo-link" href="demo.html" target="_blank" ${demo?'hidden':''}>先看离线演示 ↗</a></div>
+      <div class="buttons"><button id="connect">连接列表页</button><button id="example" ${demo?'':'hidden'}>填入演示模板</button><a class="demo-link" href="demo.html" target="_blank" ${demo?'hidden':''}>先看离线演示 ↗</a></div>
       <section class="card"><div class="cardhead"><h2>模板</h2><button id="new">新建</button></div>
       <select id="templates"><option value="">选择已保存模板</option></select><label>模板名称<input id="name" maxlength="80"></label><p id="template-host" class="hint"></p><button id="bind">绑定当前网站</button>
       <div class="buttons"><button id="save">保存到本机</button><button id="json">导出模板</button><button id="import">导入模板</button><button id="delete-template" class="danger">删除模板</button></div><input id="file" type="file" accept="application/json,.json" hidden></section>
@@ -456,7 +470,10 @@ body{background:#eaf0ec}.demo-layout{display:grid;grid-template-columns:minmax(5
       <p class="hint">移到一条完整记录上，按 ↑ 可扩大选择，点击确认；Esc 取消。</p><p id="list-summary" class="selector">尚未选择</p>
       <details><summary>手动调整列表定位规则</summary><input id="list-selector" placeholder="CSS 定位规则"></details></section>
       <section class="card"><div class="cardhead"><h2><span class="step">2</span>定义字段</h2><button id="add">＋ 添加字段</button></div><div id="fields"></div>
-      <div id="detail" hidden><h2>同页详情设置</h2><p class="hint">先手动展开一条详情，再点选详情字段。新标签页详情暂不支持。</p>
+      <div id="detail" hidden><h2>详情设置</h2>
+      <label>详情打开方式<select id="detail-mode"><option value="same">在当前页面展开</option><option value="page">进入详情页（新标签页）</option></select></label>
+      <div id="page-detail" hidden><p class="hint">手动打开一个职位详情，点击该页工具栏图标，再点下面的“连接详情样例”。详情字段在样例页点选；列表和翻页仍在列表页点选。运行时返回列表页点开始即可。</p><button id="connect-detail">连接详情样例（当前标签页）</button><p id="detail-source" class="source"></p><label>使用哪一列作为详情链接<select id="link-field"></select></label><p class="hint">没有链接列时，点选下方“打开详情的位置”，选择列表中的职位标题。可选详情标识用于核对职位名称，防止错配。</p></div>
+      <p id="same-help" class="hint">先手动展开一条详情，再点选详情字段；配置列表标识与详情标识。</p>
       <div class="buttons"><button id="pick-click">点选打开详情的位置</button><button id="pick-identity">点选详情中的标识</button></div>
       <p class="hint">列表中哪一列，应与详情标识相同？</p><select id="identity-field"></select>
       <label>详情标识读取方式<select id="identity-type"><option value="text">文字</option><option value="href">链接</option></select></label>
@@ -471,10 +488,10 @@ body{background:#eaf0ec}.demo-layout{display:grid;grid-template-columns:minmax(5
       <section class="card"><h2><span class="step">4</span>预览与运行</h2><div class="buttons"><button id="preview">预览前5条</button><button id="start" class="primary">开始 / 继续</button><button id="stop">暂停</button><button id="cancel">取消点选</button></div>
       <div class="metrics"><p id="progress">尚未运行</p><span id="state" class="tag">待配置</span></div><p id="run-message" class="hint"></p>
       <div class="buttons"><button id="excel">导出已有结果</button><button id="clear" class="danger">清空结果</button></div><div id="preview-table"></div><div id="detail-preview" class="sample" hidden></div></section>
-      <p class="footer">模板和结果只保存在本机。点选只定位页面元素，不读取密码或Cookie、不绕过访问验证。试用版支持列表/表格及同页详情。</p>`;
+      <p class="footer">模板和结果只保存在本机。点选只定位页面元素，不读取密码或Cookie、不绕过访问验证。支持列表/表格、同页详情和进入详情页批量采集。</p>`;
     const $=id=>element.querySelector('#'+id);
     const notify=(message,error=false)=>{$('notice').textContent=message;$('notice').classList.toggle('error',error);};
-    const safe=fn=>async(...args)=>{try{return await fn(...args);}catch(error){notify(error.message,true);}};
+    const safe=fn=>async(...args)=>{try{return await fn(...args);}catch(error){notify(error.message,true);}finally{persistDraft();}};
     function download(data,name,type){const url=URL.createObjectURL(new Blob([data],{type}));const a=document.createElement('a');a.href=url;a.download=name;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),60000);}
     function table(records,fields){
       $('preview-table').replaceChildren();
@@ -488,7 +505,7 @@ body{background:#eaf0ec}.demo-layout{display:grid;grid-template-columns:minmax(5
       config.name=$('name').value.trim();config.listSelector=$('list-selector').value.trim();
       config.options={count:Number($('count').value),delay:Number($('delay').value)*1000,timeout:Number($('timeout').value)*1000,maxPages:Number($('pages').value),dropEmpty:$('drop').checked};
       config.pagination={mode:$('mode').value,selector:$('next-selector').value.trim()};
-      config.detail={clickSelector:$('click-selector').value.trim(),identitySelector:$('identity-selector').value.trim(),identityField:$('identity-field').value,identityType:$('identity-type').value,waitField:$('wait-field').value,allowSame:$('same-detail').checked};
+      config.detail={mode:$('detail-mode').value,origin:config.detail?.origin || '',linkField:$('link-field').value,clickSelector:$('click-selector').value.trim(),identitySelector:$('identity-selector').value.trim(),identityField:$('identity-field').value,identityType:$('identity-type').value,waitField:$('wait-field').value,allowSame:$('same-detail').checked};
       return structuredClone(config);
     }
     function refreshFields(reset=false){
@@ -499,7 +516,7 @@ body{background:#eaf0ec}.demo-layout{display:grid;grid-template-columns:minmax(5
         card.querySelector('.fieldname').value=f.name;card.querySelector('.scope').value=f.scope;card.querySelector('.type').value=f.type;card.querySelector('.rule').value=f.selector;card.querySelector('p').textContent=f.selector || '尚未点选';card.querySelector('.key').checked=config.keyFields.includes(f.id);
         card.querySelector('.fieldname').oninput=e=>{f.name=e.target.value;identityOptions();};
         card.querySelector('.scope').onchange=e=>{f.scope=e.target.value;if(f.scope==='detail')config.keyFields=config.keyFields.filter(id=>id!==f.id);refreshFields();};
-        card.querySelector('.type').onchange=e=>{f.type=e.target.value;};
+        card.querySelector('.type').onchange=e=>{f.type=e.target.value;identityOptions();};
         card.querySelector('.rule').oninput=e=>{f.selector=e.target.value;card.querySelector('p').textContent=f.selector;};
         card.querySelector('.key').onchange=e=>{config.keyFields=config.keyFields.filter(id=>id!==f.id);if(e.target.checked)config.keyFields.push(f.id);};
         card.querySelector('.key').disabled=f.scope!=='list';
@@ -507,13 +524,17 @@ body{background:#eaf0ec}.demo-layout{display:grid;grid-template-columns:minmax(5
         card.querySelector('.pick').onclick=safe(async()=>{readForm();const selected=await pick(f.scope==='list'?'field-list':'field-detail');if(selected){f.selector=selected.selector;refreshFields();notify(`已选择“${f.name}”：${selected.sample}`);}});
         $('fields').append(card);
       }
-      $('detail').hidden=!config.fields.some(f=>f.scope==='detail');identityOptions(reset);
+      $('detail').hidden=!config.fields.some(f=>f.scope==='detail');identityOptions(reset);persistDraft();
     }
     function identityOptions(reset=false){
+      const linked=reset?config.detail?.linkField:($('link-field').value || config.detail?.linkField);
+      $('link-field').replaceChildren(new Option('点选职位标题获取链接',''));
+      for(const f of config.fields.filter(f=>f.scope==='list' && f.type==='href'))$('link-field').append(new Option(f.name,f.id));
+      if(linked)$('link-field').value=linked;
       const selected=reset?config.detail?.identityField:($('identity-field').value || config.detail?.identityField);
       const waited=reset?config.detail?.waitField:($('wait-field').value || config.detail?.waitField);
       for(const [id,scope]of[['identity-field','list'],['wait-field','detail']]){
-        $(id).replaceChildren();for(const f of config.fields.filter(f=>f.scope===scope)){const opt=document.createElement('option');opt.value=f.id;opt.textContent=f.name;$(id).append(opt);}
+        $(id).replaceChildren();if(id==='identity-field')$(id).append(new Option('不设置（进入详情页可选）',''));for(const f of config.fields.filter(f=>f.scope===scope)){const opt=document.createElement('option');opt.value=f.id;opt.textContent=f.name;$(id).append(opt);}
       }
       if(selected && config.fields.some(f=>f.id===selected))$('identity-field').value=selected;
       if(waited && config.fields.some(f=>f.id===waited))$('wait-field').value=waited;
@@ -523,15 +544,17 @@ body{background:#eaf0ec}.demo-layout{display:grid;grid-template-columns:minmax(5
       $('name').value=config.name;$('list-selector').value=config.listSelector;$('list-summary').textContent=config.listSelector || '尚未选择';
       $('mode').value=config.pagination.mode;$('next-selector').value=config.pagination.selector || '';$('next-block').hidden=!['next','load'].includes(config.pagination.mode);
       $('count').value=config.options.count;$('delay').value=config.options.delay/1000;$('timeout').value=config.options.timeout/1000;$('pages').value=config.options.maxPages;$('drop').checked=config.options.dropEmpty!==false;
+      $('detail-mode').value=config.detail?.mode || 'same';detailMode();$('detail-source').textContent=config.detail?.origin || '尚未连接详情样例';
       $('click-selector').value=config.detail?.clickSelector || '';$('identity-selector').value=config.detail?.identitySelector || '';$('identity-type').value=config.detail?.identityType || 'text';$('same-detail').checked=!!config.detail?.allowSame;
       refreshFields(true);
     }
     async function pick(kind){
       if(busy)throw new Error('请先完成或取消上一次点选。');busy=true;
       notify('请在左侧目标网页移动鼠标并点击；↑扩大选择，Esc取消。');
-      try{return await api('pick',{kind,listSelector:config.listSelector});}finally{busy=false;}
+      pickingRole=config.detail.mode==='page' && ['field-detail','identity'].includes(kind)?'detail':'list';
+      try{return await api('pick',{kind,listSelector:config.listSelector,role:pickingRole});}finally{busy=false;pickingRole='list';}
     }
-    async function connect(){context=await api('context');$('source').textContent=context.title+' · '+context.url;$('source').title=context.url;if(!config.match.origin)config.match.origin=new URL(context.url).origin;$('template-host').textContent='适用网站：'+(config.match.origin || '尚未绑定');notify(demo?'演示页已连接。可以手动点选，或先填入演示模板。':'已连接。点“选择列表”开始，先预览再运行。');}
+    async function connect(current=false){context=await api('context',{current:current===true});$('source').textContent=context.title+' · '+context.url;$('source').title=context.url;if(!config.match.origin)config.match.origin=new URL(context.url).origin;$('template-host').textContent='适用网站：'+(config.match.origin || '尚未绑定');notify(demo?'演示页已连接。可以手动点选，或先填入演示模板。':'已连接。点“选择列表”开始，先预览再运行。');}
     async function save(){readForm();VisualEngine.validate(config);templates[config.id]=structuredClone(config);await storage.set(templates);templateOptions();$('templates').value=config.id;notify('模板已保存在本机。');}
     function templateOptions(){$('templates').replaceChildren(new Option('选择已保存模板',''));for(const c of Object.values(templates))$('templates').append(new Option(c.name,c.id));}
     function exportResult(){if(!latest?.records.length)throw new Error('还没有结果，请先预览并运行。');const c=latest.config,selected=latest.records.slice(0,c.options.count);const bytes=VisualXlsx.createWorkbook(selected,c.fields,{dropEmpty:c.options.dropEmpty,errors:latest.errors});download(bytes,c.name.replace(/[\\/:*?"<>|]/g,'_')+'_'+selected.length+'条.xlsx','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');}
@@ -545,8 +568,10 @@ body{background:#eaf0ec}.demo-layout{display:grid;grid-template-columns:minmax(5
         }
       }catch(error){$('run-message').textContent=error.message;}
     }
-    $('connect').onclick=safe(connect);
-    $('bind').onclick=safe(async()=>{await connect();config.match.origin=new URL(context.url).origin;$('template-host').textContent='适用网站：'+config.match.origin;notify('已绑定当前网站，请重新预览或点选需要调整的字段。');});
+    $('connect').onclick=safe(()=>connect(true));
+    $('connect-detail').onclick=safe(async()=>{readForm();const sample=await api('detailContext',{current:true});config.detail.origin=new URL(sample.url).origin;$('detail-source').textContent=sample.title+' · '+sample.url;notify('详情样例已连接。详情字段点选会定位到这张详情页；列表设置仍对应原列表。');});
+    $('detail-mode').onchange=()=>{config.detail.mode=$('detail-mode').value;detailMode();};
+    $('bind').onclick=safe(async()=>{await connect(true);config.match.origin=new URL(context.url).origin;$('template-host').textContent='适用网站：'+config.match.origin;notify('已绑定当前网站，请重新预览或点选需要调整的字段。');});
     $('pick-list').onclick=safe(async()=>{const data=await pick('list');config.listSelector=data.selector;$('list-selector').value=data.selector;$('list-summary').textContent=`匹配 ${data.count} 条 · ${data.selector}`;notify(`已识别 ${data.count} 条记录，接下来添加字段。`);});
     $('repair-list').onclick=safe(async()=>{const repaired=await api('repair',readForm());config=repaired.config;form();$('list-summary').textContent=`匹配 ${repaired.count} 条 · ${config.listSelector}`;notify(`已修复列表：${repaired.previous} → ${repaired.count} 条；字段改为每条记录内读取。${latest?.records.length?'请先导出并清空旧结果，再预览运行。':'请先预览确认每行正确。'}`+(repaired.warnings.length?'\n'+repaired.warnings.join('\n'):''),!!repaired.warnings.length);});
     $('add').onclick=()=>{readForm();config.fields.push({id:crypto.randomUUID(),name:'字段'+(config.fields.length+1),scope:'list',type:'text',selector:''});refreshFields();};
@@ -554,10 +579,10 @@ body{background:#eaf0ec}.demo-layout{display:grid;grid-template-columns:minmax(5
     $('pick-next').onclick=safe(async()=>{const result=await pick('next');$('next-selector').value=result.selector;notify('已选择翻页按钮。');});
     $('pick-click').onclick=safe(async()=>{const result=await pick('detail-click');$('click-selector').value=result.selector;notify('已选择详情点击位置。');});
     $('pick-identity').onclick=safe(async()=>{const result=await pick('identity');$('identity-selector').value=result.selector;notify('已选择详情标识：'+result.sample);});
-    $('preview').onclick=safe(async()=>{const c=readForm(),result=await api('preview',c);table(result.records,c.fields);const details=c.fields.filter(f=>f.scope==='detail');$('detail-preview').hidden=!details.length;$('detail-preview').textContent='当前详情单独预览（未与每条列表关联）：\n'+details.map(f=>f.name+'：'+(result.detail[f.id] || '—')).join('\n');notify(`列表匹配 ${result.count} 条，显示前5条。`+(result.warnings.length?'\n'+result.warnings.join('\n'):''),!!result.warnings.length);});
+    $('preview').onclick=safe(async()=>{const c=readForm(),result=await api('preview',c);table(result.records,c.fields);if(c.detail.mode==='page')result.detail=await api('sample',{config:c,role:'detail'});const details=c.fields.filter(f=>f.scope==='detail');$('detail-preview').hidden=!details.length;$('detail-preview').textContent='当前详情单独预览（未与每条列表关联）：\n'+details.map(f=>f.name+'：'+(result.detail[f.id] || '—')).join('\n');notify(`列表匹配 ${result.count} 条，显示前5条。`+(result.warnings.length?'\n'+result.warnings.join('\n'):''),!!result.warnings.length);});
     $('start').onclick=safe(async()=>{readForm();VisualEngine.validate(config);latest=await api('start',structuredClone(config));startedHere=true;notify('采集已开始，可暂停或导出。');await update();});
     $('stop').onclick=safe(async()=>{latest=await api('stop');startedHere=false;await update();});
-    $('cancel').onclick=safe(async()=>{await api('cancelPick');notify('点选已取消。');});
+    $('cancel').onclick=safe(async()=>{await api('cancelPick',{role:pickingRole});notify('点选已取消。');});
     $('clear').onclick=safe(async()=>{if(latest?.records.length && !confirm('清空本次采集结果？已保存的模板不会删除。'))return;latest=await api('clear');$('preview-table').replaceChildren();await update();});
     $('excel').onclick=safe(async()=>{latest=await api('state');exportResult();});
     $('save').onclick=safe(save);
@@ -569,10 +594,14 @@ body{background:#eaf0ec}.demo-layout{display:grid;grid-template-columns:minmax(5
     $('delete-template').onclick=safe(async()=>{if(!templates[config.id])throw new Error('当前模板尚未保存。');if(!confirm('删除本机保存的这个模板？采集结果保留。'))return;delete templates[config.id];await storage.set(templates);templateOptions();notify('模板已删除。');});
     $('example').onclick=safe(async()=>{config=await api('example');form();notify('已填入演示模板。点“预览前5条”，再点开始。你也可以重新点选修改。');});
     for(const [quick,target]of[['quick-preview','preview'],['quick-start','start'],['quick-stop','stop'],['quick-export','excel']])$(quick).onclick=()=>$(target).click();
+    function detailMode(){const page=$('detail-mode').value==='page';$('page-detail').hidden=!page;$('same-help').hidden=page;$('same-detail').parentElement.hidden=page;$('wait-field').parentElement.hidden=page;}
+    let draftTimer,draftingReady=false;
+    function persistDraft(){if(!storage.setDraft || !draftingReady)return;clearTimeout(draftTimer);draftTimer=setTimeout(()=>{try{storage.setDraft(readForm()).catch(()=>{});}catch{}},150);}
+    element.addEventListener('input',persistDraft);element.addEventListener('change',persistDraft);
     form();
-    const ready=(async()=>{templates=await storage.get() || {};templateOptions();await connect();await update();})().catch(error=>notify(error.message,true));
+    const ready=(async()=>{templates=await storage.get() || {};templateOptions();const draft=await storage.getDraft?.();if(draft?.version===1 && Array.isArray(draft.fields)){config=draft;form();}draftingReady=true;await connect();persistDraft();await update();})().catch(error=>notify(error.message,true));
     const timer=setInterval(update,1000);
-    return {ready,dispose:()=>clearInterval(timer),getConfig:readForm,loadConfig:c=>{config=structuredClone(c);form();}};
+    return {ready,dispose:()=>{clearInterval(timer);clearTimeout(draftTimer);},getConfig:readForm,loadConfig:c=>{config=structuredClone(c);form();}};
   }
   globalThis.VisualStudio={create,defaults:DEFAULT};
 })();

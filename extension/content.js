@@ -2,12 +2,17 @@
 (() => {
   if(globalThis.__VISUAL_CAPTURE_ADAPTER__)return;
   let initialized=false, tabId=null;
-  const engine=VisualEngine.create({onUpdate:async data=>{
+  const engine=VisualEngine.create({detailReader:async payload=>{
+    const response=await chrome.runtime.sendMessage({type:'VPC_DETAIL',action:'collect',payload});
+    if(!response?.ok){const error=new Error(response?.error || '无法读取详情。');error.needsUser=!!response?.needsUser;throw error;}
+    return response.data;
+  },onUpdate:async data=>{
     if(tabId==null)return;
     const saved={...data,updatedAt:Date.now()};
     const entry={['vpc.session.'+tabId]:saved};
     if(data.config)entry['vpc.archive.'+data.config.id+'.'+encodeURIComponent(data.source)]=saved;
     await chrome.storage.local.set(entry);
+    if(!data.running)await chrome.runtime.sendMessage({type:'VPC_DETAIL',action:'finish',needsUser:!!data.needsUser});
   }});
   globalThis.__VISUAL_CAPTURE_ADAPTER__=engine;
   chrome.runtime.onMessage.addListener((request,sender,respond)=>{
@@ -31,6 +36,10 @@
       if(request.action==='pick')return engine.pick(request.payload);
       if(request.action==='cancelPick'){engine.cancelPick();return {};}
       if(request.action==='preview')return engine.preview(request.payload);
+      if(request.action==='sample'){
+        if(new URL(location.href).origin!==request.payload.config.detail.origin)throw new Error('详情样例网站已改变，请重新连接。');
+        return engine.sample(request.payload.config);
+      }
       if(request.action==='repair')return engine.repair(request.payload);
       if(request.action==='start')return engine.start(request.payload);
       if(request.action==='stop')return engine.stop();

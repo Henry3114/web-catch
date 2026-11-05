@@ -30,14 +30,23 @@
     if (!['none','next','load','scroll'].includes(c.pagination.mode)) throw new Error('翻页方式无效。');
     if (['next','load'].includes(c.pagination.mode) && !c.pagination.selector) throw new Error('请点选下一页或加载更多按钮。');
     for (const selector of [c.pagination.selector, c.detail?.clickSelector, c.detail?.identitySelector]) if (selector) document.createDocumentFragment().querySelector(selector);
-    if (c.fields.some(f=>f.scope==='detail')) {
+    c.detail ||= {};
+    c.detail.mode ||= 'same';
+    if (!['same','page'].includes(c.detail.mode)) throw new Error('详情模式无效。');
+    if (c.fields.some(f=>f.scope==='detail') && c.detail.mode==='page') {
+      let origin;try {origin=new URL(c.detail.origin);}catch {throw new Error('请连接一个详情样例页。');}
+      if (!/^https?:$/.test(origin.protocol) || origin.origin!==c.detail.origin) throw new Error('详情网站地址无效。');
+      const link=c.fields.find(f=>f.id===c.detail.linkField && f.scope==='list' && f.type==='href');
+      if (!link && !c.detail.clickSelector) throw new Error('请选取列表中的职位链接字段，或点选打开详情的位置。');
+      if (c.detail.identitySelector && !c.fields.some(f=>f.id===c.detail.identityField && f.scope==='list')) throw new Error('请设置详情标识对应的列表字段。');
+    } else if (c.fields.some(f=>f.scope==='detail')) {
       const field = c.fields.find(f=>f.id===c.detail?.identityField && f.scope==='list');
       if (!field || !c.detail?.identitySelector) throw new Error('有详情字段时，请设置列表中的标识字段和详情区对应的标识。');
     }
     c.keyFields = (c.keyFields || []).filter(id=>c.fields.some(f=>f.id===id && f.scope==='list'));
     return c;
   }
-  function create({root = document, onUpdate = async()=>{}, url = ()=>location.href} = {}) {
+  function create({root = document, onUpdate = async()=>{}, url = ()=>location.href, detailReader = null} = {}) {
     let running = false, task = null, cancelledPick = null;
     let state = {status:'idle', message:'请选择列表，再添加字段。', config:null, records:[], errors:[], page:1, pending:null, source:url()};
     const get = selector => selector === ':scope' ? root : root.querySelector(selector);
@@ -84,6 +93,10 @@
     async function readDetails(row, data, c) {
       const fields = c.fields.filter(f=>f.scope==='detail');
       if (!fields.length) return {};
+      if (c.detail.mode==='page') {
+        if (!detailReader) throw new Error('跨页详情需要在独立扩展中运行。');
+        return detailReader({config:c,data,link:data[c.detail.linkField] || '',rowSelector:VisualLocator.unique(row,document)});
+      }
       const expected = norm(data[c.detail.identityField]);
       if (!expected) throw new Error('当前列表记录的详情标识为空，已暂停，避免错配。');
       const before = detailValues(c);
@@ -111,7 +124,7 @@
         } else {previous=''; since=0;}
         await sleep(200);
       }
-      throw new Error('详情未能与当前记录对应，已暂停。请检查详情标识和等待更新字段；新标签页详情暂不支持。');
+      throw new Error('详情未能与当前记录对应，已暂停。请检查详情标识和等待更新字段；跳转网页请选择“进入详情页”。');
     }
     async function advance(c, previous) {
       if (c.pagination.mode==='none') return false;
@@ -163,6 +176,7 @@
         }
         await emit(state.records.length>=c.options.count ? `已完成 ${Math.min(state.records.length,c.options.count)} 条，可以导出 Excel。` : `已采集 ${state.records.length} 条；没有更多记录或达到翻页上限，可导出已有结果。`,'done');
       } catch(error) {
+        state.needsUser=!!error.needsUser;
         if(running) state.errors.push({url:url(),message:error.message});
         await emit(error.message,'paused');
       } finally {running=false;state.pending=null;await emit();}
@@ -175,24 +189,24 @@
       if(state.records.length && structure(c)!==structure(state.config)) throw new Error('字段或定位配置已改变，请先导出并清空已有结果，再运行新配置。');
       if(!state.config)state.source=url();
       state.page=state.pending?.nextPage || 1;
-      state.config=c;state.pending=null;running=true;
+      state.config=c;state.pending=null;state.needsUser=false;running=true;
       await emit('正在运行，请保持目标网页打开。','running');
       task=loop(c).finally(()=>{task=null;});
       return snapshot();
     }
     async function stop(){running=false;if(task) await task;await emit('已暂停，已有结果保留。','paused');return snapshot();}
-    async function clear(){if(running)throw new Error('请先暂停再清空。');if(task)await task;state={...state,config:null,source:url(),records:[],errors:[],page:1,pending:null};await emit('结果已清空。','idle');return snapshot();}
+    async function clear(){if(running)throw new Error('请先暂停再清空。');if(task)await task;state={...state,config:null,source:url(),records:[],errors:[],page:1,pending:null,needsUser:false};await emit('结果已清空。','idle');return snapshot();}
     function restore(data) {
       if(!data?.config || !Array.isArray(data.records))return;
-      validate(data.config);
-      state=structuredClone(data);running=false;delete state.running;
+      const config=validate(data.config);
+      state=structuredClone(data);state.config=config;running=false;delete state.running;
     }
     function preview(input) {
       const c=validate(input), rows=items(c), warnings=[];
       if(rows.slice(0,5).some(row=>VisualLocator.nestedRecords(row)>1))warnings.push('列表可能选中了外层容器：一个匹配项包含多条记录。请使用“修复列表层级与字段”。');
       const data=rows.slice(0,5).map(row=>listValues(row,c));
       for(const f of c.fields.filter(f=>f.scope==='list')) if(data.every(r=>!r[f.id]))warnings.push(`“${f.name}”在预览中全部为空。`);
-      return {count:rows.length,records:data,detail:detailValues(c),warnings};
+      return {count:rows.length,records:data,detail:c.detail.mode==='page'?{}:detailValues(c),warnings};
     }
     function repair(input) {
       const c=validate(input), oldRows=items(c), original=oldRows[0];
@@ -256,7 +270,7 @@
         document.addEventListener('mousemove',move,true);document.addEventListener('click',click,true);document.addEventListener('keydown',keyDown,true);
       });
     }
-    return {start,stop,clear,preview,repair,pick,snapshot,restore,cancelPick:()=>cancelledPick?.()};
+    return {start,stop,clear,preview,repair,pick,snapshot,restore,sample:input=>detailValues(validate(input)),cancelPick:()=>cancelledPick?.()};
   }
   globalThis.VisualEngine={create,validate};
 })();

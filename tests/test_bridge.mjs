@@ -11,9 +11,9 @@ function setup(url='https://example.com/list'){
     sidePanel:{open:async args=>calls.push(['panel',args])},
     scripting:{executeScript:async args=>calls.push(['inject',args])},
     storage:{local:{get:async()=>data}},
-    tabs:{get:async id=>({id,url,title:'Test page'}),query:async()=>[{id:9,url}],onUpdated:{addListener:fn=>{update=fn;}},sendMessage:async(id,message)=>{calls.push(['message',id,message]);return {ok:true,data:{status:'idle',records:[]}};}}
+    tabs:{onRemoved:{addListener:()=>{}},get:async id=>({id,url,title:'Test page'}),update:async()=>{},query:async()=>[{id:9,url}],onUpdated:{addListener:fn=>{update=fn;}},sendMessage:async(id,message)=>{calls.push(['message',id,message]);return {ok:true,data:{status:'idle',records:[]}};}}
   };
-  vm.runInNewContext(source,{chrome,URL,Date});
+  const context=vm.createContext({chrome,URL,Date,setTimeout});context.importScripts=(...files)=>files.forEach(f=>vm.runInContext(fs.readFileSync(new URL('../extension/'+f,import.meta.url),'utf8'),context));vm.runInContext(source,context);
   return{calls,data,click:updateTab=>click(updateTab),request:(message,sender={id:'vpc-test'})=>new Promise(resolve=>{const wait=rpc(message,sender,resolve);if(!wait)resolve(undefined);}),update:(...args)=>update(...args)};
 }
 test('toolbar click opens the native side panel before asynchronous injection',async()=>{
